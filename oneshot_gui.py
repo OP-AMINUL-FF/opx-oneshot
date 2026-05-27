@@ -740,7 +740,7 @@ class OneShotGUI:
         self.gen_pin_btn.grid(row=2, column=2, padx=3)
 
         ttk.Label(cfg, text="Vuln List:").grid(row=2, column=3, sticky=tk.W, padx=3)
-        self.vuln_list_btn = ttk.Button(cfg, text="Load...", command=self._load_custom_vuln)
+        self.vuln_list_btn = ttk.Button(cfg, text="Load...", command=self._load_custom_vuln_list)
         self.vuln_list_btn.grid(row=2, column=4, sticky=tk.W, padx=3)
 
         # ----- Section: Attack Mode -----
