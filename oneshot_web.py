@@ -238,25 +238,22 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
     try:
         with LogCapture():
             print(f"[*] Starting scan on {iface}...")
-            print(f"[*] Command: iw dev {iface} scan")
 
             # Step 1: Check if interface is wireless
-            print("[*] Checking if interface supports wireless...")
+            print(f"[*] iw dev {iface} info")
             iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      encoding='utf-8', errors='replace')
             if iw_info.returncode != 0:
-                err_lines = iw_info.stdout.strip().split('\n')[:3]
-                for line in err_lines:
-                    print(f"[-] iw info: {line}")
-                print(f"[-] ERROR: '{iface}' is NOT a wireless interface or does not support 'iw'")
-                print("[*] Please select a wireless interface (wlan0, wlp2s0, etc.)")
-                return
-            else:
-                # Show wireless info (type, phy)
                 for line in iw_info.stdout.strip().split('\n'):
                     if line.strip():
-                        print(f"[+] {line.strip()}")
+                        print(f"  {line.strip()}")
+                print(f"[-] ERROR: '{iface}' is NOT a wireless interface")
+                print("[*] Select a wireless interface (wlan0, wlp2s0, etc.)")
+                return
+            for line in iw_info.stdout.strip().split('\n'):
+                if line.strip():
+                    print(f"  {line.strip()}")
 
             # Step 2: Bring interface up
             if not ifaceUp(iface):
@@ -273,29 +270,15 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
                 current_vuln_list = []
                 print("[*] No vuln list loaded")
 
-            # Step 4: Run iw scan directly and show raw result
-            print("[*] Scanning for WPS networks...")
-            cmd = f'iw dev {iface} scan'
-            print(f"[*] Running: {cmd}")
-            scan_proc = subprocess.run(cmd, shell=True,
-                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       encoding='utf-8', errors='replace')
-            print(f"[*] Exit code: {scan_proc.returncode}")
-            raw_out = scan_proc.stdout.strip()
-            if raw_out:
-                lines = raw_out.split('\n')
-                # Show first few lines of raw output for debugging
-                print(f"[*] Raw output ({len(lines)} lines):")
-                for line in lines[:8]:
-                    print(f"  | {line}")
-                if len(lines) > 8:
-                    print(f"  | ... ({len(lines)-8} more lines)")
-                # Show any error lines
-                for line in lines:
-                    if line.startswith('command failed:') or 'error' in line.lower():
-                        print(f"[!] iw ERROR: {line}")
-            else:
-                print("[*] Raw output: (empty)")
+            # Step 4: Run iw scan - REAL raw output streamed directly
+            print(f"[*] iw dev {iface} scan")
+            scan_proc = subprocess.run(f'iw dev {iface} scan', shell=True,
+                                       stdout=sys.stdout, stderr=sys.stdout)
+            print(f"[*] iw exit code: {scan_proc.returncode}")
+            if scan_proc.returncode != 0:
+                print(f"[-] Scan command failed with exit code {scan_proc.returncode}")
+                print("[*] This interface does not support wireless scanning")
+                return
 
             # Step 5: Parse results via WiFiScanner
             print("[*] Parsing scan results...")
@@ -305,22 +288,18 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
             count = len(scan_results)
             if count > 0:
                 print(f"[+] Scan SUCCESS: {count} network(s) found on {iface}")
-                for n in scan_results[:5]:
+                for n in scan_results[:10]:
                     essid = n.get('ESSID', '<hidden>')
                     bssid = n.get('BSSID', '')
                     ch = n.get('Channel', '')
                     sig = n.get('Level', '')
                     wps = n.get('WPS', '')
                     print(f"    {bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
-                if count > 5:
-                    print(f"    ... and {count-5} more")
+                if count > 10:
+                    print(f"    ... and {count-10} more")
             else:
-                print(f"[-] Scan FAILED: No WPS networks found on {iface}")
-                print("[*] Possible causes:")
-                print("    - Interface is not a wireless device (check 'iw dev' list)")
-                print("    - No WPS-enabled APs nearby")
-                print("    - Interface not in managed/monitor mode")
-                print("    - Driver does not support scanning")
+                print(f"[-] Scan FAILED: No WPS networks found")
+                print("[*] Possible causes: no WPS-enabled APs nearby, or wrong interface")
     except Exception as e:
         print(f"[-] Scan error: {e}")
         import traceback
@@ -366,21 +345,14 @@ def do_attack_in_thread(params):
             print(f"[*] MTK WiFi  : {'Yes' if mtk else 'No'}")
             print(f"[*] =================================")
 
-            # Check if interface is wireless before attacking
-            print("[*] Checking wireless interface...")
+            # Check if interface supports wireless
+            print(f"[*] iw dev {iface} info")
             iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                     encoding='utf-8', errors='replace')
+                                     stdout=sys.stdout, stderr=sys.stdout)
             if iw_info.returncode != 0:
-                err_lines = iw_info.stdout.strip().split('\n')[:2]
-                for line in err_lines:
-                    print(f"[-] iw info: {line}")
                 print(f"[-] ERROR: '{iface}' is NOT a wireless interface — cannot attack")
                 print("[*] Select a wireless interface (wlan0, wlp2s0, etc.)")
                 return
-            for line in iw_info.stdout.strip().split('\n'):
-                if line.strip():
-                    print(f"[+] {line.strip()}")
 
             if mtk:
                 from pathlib import Path
