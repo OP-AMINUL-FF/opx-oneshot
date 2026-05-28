@@ -757,6 +757,35 @@ function log(msg, cls='info') {
   box.scrollTop = box.scrollHeight;
 }
 
+// Log every UI interaction: buttons, checkboxes, radios, inputs, selects
+function initUILogger() {
+  document.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      const txt = this.textContent.trim().replace(/\s+/g, ' ') || this.id || 'button';
+      log(`[UI] Button clicked: "${txt}"`, 'info');
+    });
+  });
+  document.querySelectorAll('input[type="checkbox"], input[type="radio"]').forEach(el => {
+    el.addEventListener('change', function(e) {
+      const label = this.id || this.value || 'option';
+      const state = this.checked ? 'ON' : 'OFF';
+      log(`[UI] ${label} → ${state}`, 'info');
+    });
+  });
+  document.querySelectorAll('input[type="text"], input[type="number"], input:not([type])').forEach(el => {
+    el.addEventListener('change', function(e) {
+      const label = this.id || 'input';
+      log(`[UI] ${label} = "${this.value}"`, 'info');
+    });
+  });
+  document.querySelectorAll('select').forEach(el => {
+    el.addEventListener('change', function(e) {
+      const label = this.id || 'select';
+      log(`[UI] ${label} → "${this.value}"`, 'info');
+    });
+  });
+}
+
 function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
@@ -956,6 +985,8 @@ function clearHistory() {
 refreshIfaces();
 setInterval(refreshIfaces, 5000);
 connectSSE();
+initUILogger();
+log('[*] OPX OneShot WebUI ready', 'info');
 </script>
 <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:12px">
   <b>OPX OneShot</b> — by <a href="https://github.com/OP-AMINUL-FF" style="color:var(--accent);text-decoration:none">OP AMINUL FF</a>
