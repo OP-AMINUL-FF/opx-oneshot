@@ -29,6 +29,34 @@ current_vuln_list = []
 attack_running = False
 current_companion = None
 operation_thread = None
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wifi_history.json')
+
+def save_history(essid, bssid, pin, psk, mode):
+    history = []
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        except:
+            history = []
+    entry = {
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'essid': essid or '',
+        'bssid': bssid or '',
+        'pin': pin or '',
+        'psk': psk or '',
+        'mode': mode or '',
+    }
+    # Don't save if empty
+    if not entry['psk'] and not entry['pin']:
+        return
+    history.append(entry)
+    try:
+        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+        print(f"[+] Credentials saved to history: {essid}")
+    except Exception as e:
+        print(f"[-] Failed to save history: {e}")
 
 app = Flask(__name__)
 
@@ -162,8 +190,8 @@ def ifaceUp(iface, down=False):
 def do_scan_in_thread(iface, vuln_path='', reverse=False):
     global scan_results, current_vuln_list
     oneshot.args.reverse_scan = reverse
-    with LogCapture():
-        try:
+    try:
+        with LogCapture():
             if not ifaceUp(iface):
                 print(f"[-] Failed to bring up {iface}")
                 return
@@ -173,15 +201,13 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
                     current_vuln_list = f.read().splitlines()
             except:
                 current_vuln_list = []
-        except:
-            current_vuln_list = []
-        try:
             scanner = WiFiScanner(iface, current_vuln_list)
             result = scanner.iw_scanner()
             scan_results = list(result.values()) if result else []
-        except Exception as e:
-            print(f"[-] Scan error: {e}")
-    log_queue.put('__SCAN_DONE__')
+    except Exception as e:
+        print(f"[-] Scan error: {e}")
+    finally:
+        log_queue.put('__SCAN_DONE__')
 
 def do_attack_in_thread(params):
     global attack_running, current_companion
@@ -202,9 +228,10 @@ def do_attack_in_thread(params):
     iface_down = params.get('iface_down', False)
     loop = params.get('loop', False)
     mtk = params.get('mtk', False)
+    wmt = None
 
-    with LogCapture():
-        try:
+    try:
+        with LogCapture():
             if mtk:
                 from pathlib import Path
                 wmt = Path('/dev/wmtWifi')
@@ -220,6 +247,7 @@ def do_attack_in_thread(params):
                 return
 
             while True:
+                companion = None
                 try:
                     if stop_event.is_set():
                         print("[!] Attack stopped by user")
@@ -237,29 +265,43 @@ def do_attack_in_thread(params):
                         companion.single_connection(bssid, pin, pixie, False,
                                                     show_cmd, pixie_force)
 
+                    if companion.connection_status.status == 'GOT_PSK':
+                        cs = companion.connection_status
+                        save_history(
+                            essid=cs.essid or bssid,
+                            bssid=cs.bssid or bssid,
+                            pin=pin,
+                            psk=cs.wpa_psk,
+                            mode='pixie' if pixie else 'bruteforce' if bruteforce else 'pbc'
+                        )
+
                     if not loop:
                         break
                 except KeyboardInterrupt:
                     if loop:
                         print("[?] Continuing loop...")
-                        continue
                     else:
                         print("\n[!] Aborting…")
                         break
-        except Exception as e:
-            print(f"[-] Attack error: {e}")
-        finally:
-            if iface_down:
-                ifaceUp(iface, down=True)
-            if mtk:
-                try:
-                    wmt.write_text('0')
-                except:
-                    pass
-            attack_running = False
-            current_companion = None
-
-    log_queue.put('__ATTACK_DONE__')
+                finally:
+                    if companion is not None:
+                        try:
+                            companion.cleanup()
+                        except:
+                            pass
+                    current_companion = None
+    except Exception as e:
+        print(f"[-] Attack error: {e}")
+    finally:
+        if iface_down:
+            ifaceUp(iface, down=True)
+        if mtk and wmt is not None:
+            try:
+                wmt.write_text('0')
+            except:
+                pass
+        attack_running = False
+        log_queue.put('__ATTACK_DONE__')
 
 # ============================================================
 # Flask Routes
@@ -333,6 +375,26 @@ def api_status():
         'running': attack_running,
         'has_results': len(scan_results) > 0,
     })
+
+@app.route('/api/history')
+def api_history():
+    if not os.path.exists(HISTORY_FILE):
+        return jsonify([])
+    try:
+        with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return jsonify(data)
+    except:
+        return jsonify([])
+
+@app.route('/api/history/clear', methods=['POST'])
+def api_history_clear():
+    try:
+        if os.path.exists(HISTORY_FILE):
+            os.remove(HISTORY_FILE)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/stream')
 def stream():
@@ -447,6 +509,43 @@ label { font-size: 13px; color: var(--text-dim); }
 .ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .pin-row { display: flex; gap: 8px; align-items: center; }
 .pin-row input { flex: 1; font-family: monospace; letter-spacing: 2px; }
+.modal {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.7); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-content {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); max-width: 780px; width: 94%;
+  max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { font-size: 16px; margin: 0; }
+.modal-body { padding: 0; overflow-y: auto; flex: 1; }
+.modal-body table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.modal-body th {
+  position: sticky; top: 0; background: var(--surface);
+  padding: 8px 10px; text-align: left; border-bottom: 2px solid var(--border);
+  color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.modal-body td {
+  padding: 7px 10px; border-bottom: 1px solid var(--border);
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-body tr:hover td { background: rgba(88,166,255,.05); }
+.modal-body .psk-cell { font-family: monospace; color: var(--green); letter-spacing: 0.5px; }
+.modal-body .pin-cell { font-family: monospace; color: var(--accent); }
+.modal-body .empty-msg { text-align: center; padding: 30px; color: var(--text-dim); font-size: 14px; }
+.modal-footer {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}
 @media (max-width: 600px) {
   .col { min-width: 100%; }
   .header { flex-direction: column; align-items: stretch; }
@@ -514,6 +613,7 @@ label { font-size: 13px; color: var(--text-dim); }
       <div class="ctrl-row">
         <button class="btn btn-success" id="startBtn" onclick="startAttack()">&#9654; Start Attack</button>
         <button class="btn btn-danger" id="stopBtn" onclick="stopAttack()" disabled>&#9632; Stop</button>
+        <button class="btn" onclick="showHistory()">&#128203; History</button>
         <button class="btn" onclick="clearLog()">Clear Log</button>
         <span id="statusBadge" style="font-size:12px;color:var(--text-dim)">Ready</span>
       </div>
@@ -523,6 +623,22 @@ label { font-size: 13px; color: var(--text-dim); }
   <div class="card">
     <div class="card-title">Output</div>
     <div class="log-box" id="logBox"></div>
+  </div>
+</div>
+
+<div id="historyModal" class="modal" style="display:none">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>&#128203; WiFi History</h2>
+      <button class="btn" onclick="closeHistory()" style="font-size:18px;padding:2px 10px">&times;</button>
+    </div>
+    <div class="modal-body" id="historyBody">
+      <div style="text-align:center;padding:20px;color:var(--text-dim)">Loading...</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="clearHistory()">&#128465; Clear All</button>
+      <button class="btn" onclick="closeHistory()">Close</button>
+    </div>
   </div>
 </div>
 
@@ -669,6 +785,48 @@ function connectSSE() {
     }
   });
   eventSource.onerror = () => setTimeout(connectSSE, 1000);
+}
+
+function showHistory() {
+  const body = document.getElementById('historyBody');
+  body.innerHTML = '<div class="empty-msg">Loading...</div>';
+  document.getElementById('historyModal').style.display = 'flex';
+  fetch('/api/history').then(r=>r.json()).then(data => {
+    if (!data || !data.length) {
+      body.innerHTML = '<div class="empty-msg">No history yet. Successful attacks will appear here.</div>';
+      return;
+    }
+    let html = '<table><thead><tr><th>#</th><th>WiFi</th><th>BSSID</th><th>PIN</th><th>Password</th><th>Mode</th><th>Date</th></tr></thead><tbody>';
+    data.slice().reverse().forEach((e,i) => {
+      html += `<tr>
+        <td style="color:var(--text-dim)">${data.length-i}</td>
+        <td><b>${escapeHtml(e.essid || '-')}</b></td>
+        <td style="font-family:monospace;font-size:12px;color:var(--accent)">${escapeHtml(e.bssid || '-')}</td>
+        <td class="pin-cell">${escapeHtml(e.pin || '-')}</td>
+        <td class="psk-cell">${e.psk ? escapeHtml(e.psk) : '<span style="color:var(--text-dim)">-</span>'}</td>
+        <td style="font-size:12px"><span style="background:var(--bg);padding:2px 6px;border-radius:3px;border:1px solid var(--border)">${escapeHtml(e.mode)}</span></td>
+        <td style="font-size:11px;color:var(--text-dim)">${escapeHtml(e.timestamp)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  }).catch(() => {
+    body.innerHTML = '<div class="empty-msg">Error loading history</div>';
+  });
+}
+
+function closeHistory() {
+  document.getElementById('historyModal').style.display = 'none';
+}
+
+function clearHistory() {
+  if (!confirm('Clear all saved passwords?')) return;
+  fetch('/api/history/clear', {method:'POST'}).then(r=>r.json()).then(d => {
+    if (d.status === 'ok') {
+      document.getElementById('historyBody').innerHTML = '<div class="empty-msg">History cleared.</div>';
+      log('[+] History cleared', 'info');
+    }
+  });
 }
 
 refreshIfaces();
