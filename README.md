@@ -77,9 +77,8 @@ All four support the same 16 CLI options mapped to interactive controls.
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip python3-tk python3-wcwidth \
+sudo apt install -y python3 python3-pip python3-tk python3-wcwidth python3-flask \
                      wpasupplicant pixiewps iw wireless-tools iproute2 wget
-pip3 install flask
 ```
 
 ## Download
@@ -199,9 +198,8 @@ Runs a local web server — open in any browser (Chrome, Firefox, Kiwi, etc.).
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip python3-wcwidth \
+sudo apt install -y python3 python3-pip python3-wcwidth python3-flask \
                      wpasupplicant pixiewps iw wireless-tools iproute2
-pip3 install flask
 ```
 
 ### Termux
@@ -278,8 +276,8 @@ On Termux (Android), open Chrome/Firefox and navigate to `http://127.0.0.1:5000`
 ### Debian / Ubuntu
 
 ```bash
-sudo apt install -y python3 python3-pip wpasupplicant pixiewps iw wireless-tools iproute2 wget
-pip3 install wcwidth
+sudo apt install -y python3 python3-pip python3-wcwidth python3-flask \
+                     wpasupplicant pixiewps iw wireless-tools iproute2 wget
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
@@ -398,8 +396,8 @@ Use `--mtk-wifi` flag to re-initialize the driver.
 | `python3` | `python3` | `python` | `python3` | `python` | Runtime |
 | `pip` | `python3-pip` | `python-pip` | `python3-pip` | `pip` (built-in) | Python packages |
 | `tkinter` | `python3-tk` | `python-tk` | `python3-tkinter` | — (use WebUI) | Desktop GUI |
-| `wcwidth` | `python3-wcwidth` / pip | `pip install wcwidth` | pip | `pip install wcwidth` | Terminal formatting |
-| `flask` | `pip3 install flask` | `pip install flask` | `pip3 install flask` | `pip install flask` | WebUI server |
+| `wcwidth` | `python3-wcwidth` | `python-wcwidth` | `python3-wcwidth` | `pip install wcwidth` | Terminal formatting |
+| `flask` | `python3-flask` | `python-flask` | `python3-flask` | `pip install flask` | WebUI server |
 | `tsu` | — | — | — | `tsu` | Root on Termux |
 | `openssl` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `openssl` | Pixiewps |
 | `binutils` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `binutils` | Compilation |

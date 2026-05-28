@@ -55,19 +55,19 @@ install_deps() {
         kali|debian)
             sudo apt update -y
             sudo apt install -y python3 python3-pip python3-tk python3-wcwidth \
-                               wpasupplicant pixiewps iw wireless-tools iproute2 git
-            sudo pip3 install flask
+                               python3-flask wpasupplicant pixiewps iw \
+                               wireless-tools iproute2 git
             ;;
         arch)
             sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm python python-pip python-tk \
-                               wpa_supplicant pixiewps iw wireless_tools iproute2 git
-            sudo pip install flask wcwidth
+            sudo pacman -S --noconfirm python python-pip python-tk python-flask \
+                               python-wcwidth wpa_supplicant pixiewps iw \
+                               wireless_tools iproute2 git
             ;;
         fedora)
-            sudo dnf install -y python3 python3-pip python3-tkinter \
-                               wpa_supplicant pixiewps iw wireless-tools iproute git
-            sudo pip3 install flask wcwidth
+            sudo dnf install -y python3 python3-pip python3-tkinter python3-flask \
+                               python3-wcwidth wpa_supplicant pixiewps iw \
+                               wireless-tools iproute git
             ;;
         *)
             err "Unknown platform. Install manually."
