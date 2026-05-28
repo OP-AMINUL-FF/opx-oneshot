@@ -136,7 +136,7 @@ remove_all() {
 
     # Remove global command
     for c in "/usr/local/bin/$CMD_NAME" "/data/data/com.termux/files/usr/bin/$CMD_NAME" \
-             "$PREFIX/bin/$CMD_NAME" 2>/dev/null; do
+             "$PREFIX/bin/$CMD_NAME"; do
         [ -f "$c" ] && rm -f "$c" 2>/dev/null || sudo rm -f "$c" 2>/dev/null || true
     done
 
