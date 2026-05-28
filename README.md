@@ -5,10 +5,11 @@
 ## Quick Install (All Platforms)
 
 ```bash
-# Download installer
+# Download installer (pick one)
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/install.sh
+# or: curl -LO https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/install.sh
 
-# Run installer (detects Termux/Kali/Ubuntu automatically)
+# Run installer (detects Termux/Kali/Ubuntu/Arch/Fedora automatically)
 bash install.sh
 
 # Then from anywhere:
@@ -17,7 +18,7 @@ opx-oneshot 8080      # Start on custom port
 opx-oneshot -r        # Remove completely
 ```
 
-> Installer auto-detects your OS, installs all dependencies (python, wpa_supplicant, pixiewps, iw, flask), clones the repo, and creates the global `opx-oneshot` command.
+> Installer auto-detects your OS, installs **all** dependencies (python, pip, wpa_supplicant, pixiewps, iw, wireless-tools, iproute2, tkinter, wcwidth, flask, tsu), clones the repo, and creates the global `opx-oneshot` command.
 
 ---
 
@@ -56,10 +57,14 @@ All four support the same 16 CLI options mapped to interactive controls.
 # Requirements
 
 - Python 3.6+
-- [wpa_supplicant](https://www.w1.fi/wpa_supplicant/)
-- [Pixiewps](https://github.com/wiire-a/pixiewps)
-- [iw](https://wireless.wiki.kernel.org/en/users/documentation/iw)
-- Root access (`sudo`)
+- [wpa_supplicant](https://www.w1.fi/wpa_supplicant/) — WPS handshake
+- [Pixiewps](https://github.com/wiire-a/pixiewps) — offline Pixie Dust computation
+- [iw](https://wireless.wiki.kernel.org/en/users/documentation/iw) — Wi-Fi scanning
+- `wireless-tools` — `iwconfig` for interface detection
+- `iproute2` — `ip link` for interface management
+- Root access (`sudo` / `tsu`)
+- **Optional (GUI):** `python3-tk` (tkinter) for desktop GUI
+- **Optional (WebUI):** `flask` + `wcwidth` (installed via pip)
 
 ---
 
@@ -69,7 +74,9 @@ All four support the same 16 CLI options mapped to interactive controls.
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-tk wpasupplicant pixiewps iw wget
+sudo apt install -y python3 python3-pip python3-tk python3-wcwidth \
+                     wpasupplicant pixiewps iw wireless-tools iproute2 wget
+pip3 install flask
 ```
 
 ## Download
@@ -119,8 +126,9 @@ sudo python3 oneshot_gui.py
 ```bash
 pkg update
 pkg install -y root-repo
-pkg install -y git tsu python wpa-supplicant pixiewps iw openssl
-pip install wcwidth
+pkg install -y git tsu python wpa-supplicant pixiewps iw openssl \
+                iproute2 wireless-tools binutils
+pip install flask wcwidth
 ```
 
 ## Download
@@ -188,7 +196,8 @@ Runs a local web server — open in any browser (Chrome, Firefox, Kiwi, etc.).
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip wpasupplicant pixiewps iw
+sudo apt install -y python3 python3-pip python3-wcwidth \
+                     wpasupplicant pixiewps iw wireless-tools iproute2
 pip3 install flask
 ```
 
@@ -197,8 +206,9 @@ pip3 install flask
 ```bash
 pkg update
 pkg install -y root-repo
-pkg install -y tsu python wpa-supplicant pixiewps iw openssl
-pip install flask
+pkg install -y tsu python wpa-supplicant pixiewps iw openssl \
+                iproute2 wireless-tools binutils
+pip install flask wcwidth
 ```
 
 ## Download
@@ -265,7 +275,8 @@ On Termux (Android), open Chrome/Firefox and navigate to `http://127.0.0.1:5000`
 ### Debian / Ubuntu
 
 ```bash
-sudo apt install -y python3 wpasupplicant iw pixiewps wget
+sudo apt install -y python3 python3-pip wpasupplicant pixiewps iw wireless-tools iproute2 wget
+pip3 install wcwidth
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
@@ -273,7 +284,17 @@ wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ### Arch Linux
 
 ```bash
-sudo pacman -S wpa_supplicant pixiewps wget python
+sudo pacman -S wpa_supplicant pixiewps iw wireless_tools iproute2 python python-pip wget
+pip install wcwidth
+wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
+wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
+```
+
+### Fedora
+
+```bash
+sudo dnf install -y wpa_supplicant pixiewps iw wireless-tools iproute python3 python3-pip wget
+pip3 install wcwidth
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
@@ -282,7 +303,9 @@ wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 
 ```bash
 pkg install -y root-repo
-pkg install -y git tsu python wpa-supplicant pixiewps iw openssl
+pkg install -y git tsu python wpa-supplicant pixiewps iw openssl \
+                iproute2 wireless-tools binutils
+pip install wcwidth
 git clone --depth 1 https://github.com/OP-AMINUL-FF/opx-oneshot.git
 cd opx-oneshot
 sudo python oneshot.py -i wlan0 --iface-down -K
@@ -357,3 +380,25 @@ Use `--mtk-wifi` flag to re-initialize the driver.
 - `rofl0r` — initial implementation
 - `Monohrom` — testing, bug catching, ideas
 - `Wiire` — Pixiewps development
+
+---
+
+# Complete Package Reference
+
+| Package | Debian/Kali | Arch | Fedora | Termux | Needed For |
+|---------|-------------|------|--------|--------|------------|
+| `wpa_supplicant` | `wpasupplicant` | `wpa_supplicant` | `wpa_supplicant` | `wpa-supplicant` | WPS handshake |
+| `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` | Pixie Dust attack |
+| `iw` | `iw` | `iw` | `iw` | `iw` | Wi-Fi scanning |
+| `wireless-tools` | `wireless-tools` | `wireless_tools` | `wireless-tools` | `wireless-tools` | `iwconfig` detection |
+| `iproute2` | `iproute2` | `iproute2` | `iproute` | `iproute2` | `ip link` management |
+| `python3` | `python3` | `python` | `python3` | `python` | Runtime |
+| `pip` | `python3-pip` | `python-pip` | `python3-pip` | `pip` (built-in) | Python packages |
+| `tkinter` | `python3-tk` | `python-tk` | `python3-tkinter` | — (use WebUI) | Desktop GUI |
+| `wcwidth` | `python3-wcwidth` / pip | `pip install wcwidth` | pip | `pip install wcwidth` | Terminal formatting |
+| `flask` | `pip3 install flask` | `pip install flask` | `pip3 install flask` | `pip install flask` | WebUI server |
+| `tsu` | — | — | — | `tsu` | Root on Termux |
+| `openssl` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `openssl` | Pixiewps |
+| `binutils` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `binutils` | Compilation |
+
+> **Tip:** Instead of installing manually, just run `bash install.sh` — it handles all of the above automatically.
