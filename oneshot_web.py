@@ -63,7 +63,19 @@ class LogCapture:
 def get_wifi_interfaces():
     ifaces = []
     seen = set()
-    # Method 1: iw dev
+    skip_words = {'no', 'ieee', 'essid', 'mode', 'access', 'bit', 'link', 'tx', 'rx',
+                  'extra', 'power', 'retry', 'rts', 'frag', 'encryption', 'ap', 'cell'}
+    # Method 1: /proc/net/dev (most reliable on Termux/Android)
+    try:
+        with open('/proc/net/dev') as f:
+            for line in f.readlines()[2:]:
+                iface = line.strip().split(':')[0].strip()
+                if iface not in seen:
+                    ifaces.append(iface)
+                    seen.add(iface)
+    except:
+        pass
+    # Method 2: iw dev (refine with wireless-capable interfaces)
     try:
         r = subprocess.run(['iw', 'dev'], capture_output=True, text=True)
         for line in r.stdout.split('\n'):
@@ -74,29 +86,22 @@ def get_wifi_interfaces():
                     seen.add(iface)
     except:
         pass
-    # Method 2: iwconfig
-    if not ifaces:
-        try:
-            r = subprocess.run(['iwconfig'], capture_output=True, text=True)
-            for line in r.stdout.split('\n'):
-                if 'IEEE' in line or 'ESSID' in line:
-                    iface = line.split()[0]
+    # Method 3: iwconfig (catch any remaining interfaces)
+    try:
+        r = subprocess.run(['iwconfig'], capture_output=True, text=True)
+        for line in r.stdout.split('\n'):
+            sline = line.strip()
+            if sline and ' ' in line and not line.startswith((' ', '\t')):
+                iface = line.split()[0].strip()
+                # Skip non-interface lines
+                if iface.lower() not in skip_words and not iface.startswith('('):
                     if iface not in seen:
                         ifaces.append(iface)
                         seen.add(iface)
-        except:
-            pass
-    # Method 3: /proc/net/wireless
-    if not ifaces:
-        try:
-            with open('/proc/net/wireless') as f:
-                for line in f.readlines()[2:]:
-                    iface = line.strip().split(':')[0]
-                    if iface not in seen:
-                        ifaces.append(iface)
-                        seen.add(iface)
-        except:
-            pass
+    except:
+        pass
+    # Filter out non-wireless virtual interfaces (lo, tunnels) but keep everything
+    # that might be a Wi-Fi interface
     return ifaces if ifaces else ['wlan0']
 
 def get_own_ip():
