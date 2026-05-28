@@ -1,208 +1,121 @@
-# OneShot WebUI
+<div align="center">
 
-**OneShot** performs [Pixie Dust attack](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-Offline-WPS-Attack) without having to switch to monitor mode.
+# ⚡ OneShot WebUI
 
-## Quick Install (All Platforms)
+**Pixie Dust WPS Attack — No Monitor Mode Required**
+
+[![Kali](https://img.shields.io/badge/Kali-557C94?style=for-the-badge&logo=kalilinux&logoColor=white&labelColor=2A2A2A)](https://www.kali.org/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white&labelColor=2A2A2A)](https://ubuntu.com/)
+[![Arch](https://img.shields.io/badge/Arch-1793D1?style=for-the-badge&logo=archlinux&logoColor=white&labelColor=2A2A2A)](https://archlinux.org/)
+[![Fedora](https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white&labelColor=2A2A2A)](https://fedoraproject.org/)
+[![Termux](https://img.shields.io/badge/Termux-000000?style=for-the-badge&logo=terminal&logoColor=white&labelColor=2A2A2A)](https://termux.com/)
+
+[![Version](https://img.shields.io/badge/dynamic/json?style=flat-square&label=version&query=name&url=https%3A%2F%2Fapi.github.com%2Frepos%2FOP-AMINUL-FF%2Fopx-oneshot%2Freleases%2Flatest&color=blue&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot/releases)
+[![Stars](https://img.shields.io/github/stars/OP-AMINUL-FF/opx-oneshot?style=flat-square&color=yellow&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot)
+[![License](https://img.shields.io/badge/license-GPLv3-green?style=flat-square&labelColor=1a1a2e)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.6%2B-3776AB?style=flat-square&logo=python&logoColor=white&labelColor=1a1a2e)](https://python.org)
+[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot/pulls)
+
+---
+
+**4 interfaces · 16 CLI options mapped · Same attack engine · Cross-platform**
+
+</div>
+
+---
+
+## 🚀 Quick Install (All Platforms)
 
 ```bash
-# Download installer (pick one)
+# Download & run installer
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/install.sh
 # or: curl -LO https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/install.sh
 
-# Run installer (detects Termux/Kali/Ubuntu/Arch/Fedora automatically)
 bash install.sh
-
-# Then from anywhere:
-opx-oneshot           # Start WebUI
-opx-oneshot 8080      # Start on custom port
-opx-oneshot -u        # Update to latest version (from anywhere)
-opx-oneshot -r        # Remove completely
 ```
 
-> Installer auto-detects your OS, installs **all** dependencies (python, pip, wpa_supplicant, pixiewps, iw, wireless-tools, iproute2, tkinter, wcwidth, flask, tsu), clones the repo, and creates the global `opx-oneshot` command.
->
-> **Update anytime with:** `opx-oneshot -u` or `sudo python3 oneshot_web.py -u` (works from anywhere)
+Then from **anywhere**:
+
+| Command | Action |
+|---------|--------|
+| `opx-oneshot` | 🚀 Start WebUI at `http://127.0.0.1:5000` |
+| `opx-oneshot 8080` | 🔌 Start on custom port |
+| `opx-oneshot -u` | 🔄 Update to latest version |
+| `opx-oneshot -r` | 🗑️ Remove completely |
+
+> Installer auto-detects your OS, installs **all** dependencies, clones the repo, and creates the global `opx-oneshot` command — usable from anywhere.
 
 ---
 
-## Manual Setup
+## 📦 What's Included
 
-This repository includes **four interfaces**:
+| File | Platform | Type | Best For |
+|------|----------|------|----------|
+| `oneshot_web.py` | **Any** (Linux / Termux / Windows) | 🌐 **WebUI** | Browser on any device |
+| `oneshot_gui.py` | Linux Desktop | 🖥️ tkinter GUI | Native desktop experience |
+| `oneshot_termux.py` | Termux (Android) | 📱 curses TUI | Terminal-only (no X11) |
+| `oneshot.py` | Linux / Termux | ⌨️ CLI | Original command-line tool |
+| `install.sh` | **Any** | 📦 Installer | One-command setup |
 
-| File | Platform | Type |
-|------|----------|------|
-| `oneshot.py` | Linux / Termux | CLI (original) |
-| `oneshot_gui.py` | Linux Desktop | tkinter GUI |
-| `oneshot_termux.py` | Termux (Android) | curses TUI |
-| `oneshot_web.py` | **Any** (Linux, Kali, Termux) | **WebUI** (browser) |
-| `install.sh` | **Any** | **Installer** (deps + global command) |
-
-After running `install.sh`, use the global command `opx-oneshot` from anywhere.
-
-All four support the same 16 CLI options mapped to interactive controls.
+All four use the **same attack engine** (`Companion` class from `oneshot.py`) with all **16 CLI options** mapped to interactive controls.
 
 ---
 
-# Features
+## ✨ Features
 
-- Pixie Dust attack
-- Integrated 3WiFi offline WPS PIN generator
-- Online WPS bruteforce
-- WPS Push Button Connection (PBC)
-- Wi-Fi scanner with vulnerable-device highlighting
-- Save credentials on success
-- Loop mode, reverse scan, verbose output
-- MediaTek Wi-Fi driver support (`--mtk-wifi`)
-- Custom vulnerable-devices list (`--vuln-list`)
+<div align="center">
 
----
+| | Feature | | Feature |
+|---|---|---|---|
+| ⚡ | **Pixie Dust** — offline WPS attack | 🔄 | **Loop mode** — auto-repeat |
+| 🔨 | **Bruteforce** — online PIN guessing | 🔀 | **Reverse scan** — small displays |
+| 🔘 | **PBC** — Push Button Connect | 📢 | **Verbose** — debug output |
+| 📡 | **Wi-Fi scanner** — vulnerable device highlight | 📴 | **Iface Down** — auto-cleanup |
+| 🔑 | **3WiFi PIN generator** — offline PINs | 📶 | **MTK WiFi** — MediaTek driver |
+| 💾 | **Save credentials** on success | 📋 | **Custom vuln list** — `--vuln-list` |
+| ⏱️ | **Delay control** between attempts | 🛑 | **Stop anytime** — clean exit |
 
-# Requirements
-
-- Python 3.6+
-- [wpa_supplicant](https://www.w1.fi/wpa_supplicant/) — WPS handshake
-- [Pixiewps](https://github.com/wiire-a/pixiewps) — offline Pixie Dust computation
-- [iw](https://wireless.wiki.kernel.org/en/users/documentation/iw) — Wi-Fi scanning
-- `wireless-tools` — `iwconfig` for interface detection
-- `iproute2` — `ip link` for interface management
-- Root access (`sudo` / `tsu`)
-- **Optional (GUI):** `python3-tk` (tkinter) for desktop GUI
-- **Optional (WebUI):** `flask` + `wcwidth` (installed via pip)
+</div>
 
 ---
 
-# Linux Desktop (tkinter GUI)
-
-## Install Dependencies
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-pip python3-tk python3-wcwidth python3-flask \
-                     wpasupplicant pixiewps iw wireless-tools iproute2 wget
-```
-
-## Download
-
-```bash
-git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
-cd opx-oneshot
-```
-
-Or download just the GUI file:
-
-```bash
-wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot_gui.py
-wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
-```
-
-## Run
-
-```bash
-sudo python3 oneshot_gui.py
-```
-
-> **Note:** You need a desktop environment with X11/Wayland. Run from a terminal with `sudo`.
-
-## GUI Overview
-
-| Section | Controls |
-|---------|----------|
-| **Interface** | Dropdown to select Wi-Fi interface |
-| **Target** | Scan button + network listbox |
-| **Attack Mode** | Pixie Dust, Bruteforce, PBC radio buttons |
-| **PIN** | Manual PIN entry + Generate PIN button |
-| **Options** | Write creds, Pixie Force, Show Pixie Cmd, Loop, Reverse Scan, Verbose, Iface Down, MTK WiFi |
-| **Delay** | Spinbox for pin attempt delay (seconds) |
-| **Vuln List** | Load custom vulnerable-devices file |
-| **Output** | Scrollable log window |
-| **Attack** | Start / Stop buttons |
-
----
-
-# Termux (curses TUI)
-
-> **No X11 required.** Runs entirely inside the terminal.
-
-## Install Dependencies
-
-```bash
-pkg update
-pkg install -y root-repo
-pkg install -y git tsu python wpa-supplicant pixiewps iw openssl \
-                iproute2 wireless-tools binutils
-pip install flask wcwidth
-```
-
-## Download
-
-```bash
-git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
-cd opx-oneshot
-```
-
-## Run
-
-```bash
-sudo python oneshot_termux.py
-```
-
-Or with tsu:
-
-```bash
-tsu -c "python oneshot_termux.py"
-```
-
-## TUI Controls
-
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Navigate menu items |
-| `Enter` | Select / activate |
-| `Tab` | Switch between fields |
-| `Space` | Toggle checkboxes |
-| `Esc` / `q` | Quit / go back |
-
-## TUI Menu Items
-
-All 16 CLI options are mapped:
-
-1. **Interface** — enter interface name (e.g. `wlan0`)
-2. **BSSID** — enter target MAC
-3. **PIN** — enter custom PIN
-4. **Scan** — scan for networks
-5. **Pixie Dust** — toggle Pixie Dust attack
-6. **Bruteforce** — toggle bruteforce
-7. **PBC** — toggle Push Button Connect
-8. **Write Creds** — toggle save on success
-9. **Pixie Force** — toggle `--force` flag
-10. **Show Pixie Cmd** — toggle printing pixiewps command
-11. **Delay** — set delay between pins
-12. **Loop** — toggle loop mode
-13. **Reverse Scan** — toggle reverse order
-14. **Verbose** — toggle verbose output
-15. **Iface Down** — toggle interface down on exit
-16. **MTK WiFi** — toggle MediaTek driver support
-17. **Vuln List** — load custom vuln file
-18. **Start Attack** — run with current settings
-
----
-
-# WebUI (`oneshot_web.py`) — Same UI Everywhere
+## 🌐 WebUI — Same UI Everywhere
 
 **Single interface that works identically on Linux, Kali, and Termux.**  
-Runs a local web server — open in any browser (Chrome, Firefox, Kiwi, etc.).
+Runs a local web server — open in **any browser** (Chrome, Firefox, Kiwi, etc.).
 
-## Install Dependencies
+### Install
 
-### Linux / Kali
+<details>
+<summary><b>📘 Debian / Kali / Ubuntu</b></summary>
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-pip python3-wcwidth python3-flask \
                      wpasupplicant pixiewps iw wireless-tools iproute2
 ```
+</details>
 
-### Termux
+<details>
+<summary><b>📗 Arch Linux</b></summary>
+
+```bash
+sudo pacman -S python python-pip python-flask python-wcwidth \
+               wpa_supplicant pixiewps iw wireless_tools iproute2
+```
+</details>
+
+<details>
+<summary><b>📕 Fedora</b></summary>
+
+```bash
+sudo dnf install -y python3 python3-pip python3-flask python3-wcwidth \
+                     wpa_supplicant pixiewps iw wireless-tools iproute
+```
+</details>
+
+<details>
+<summary><b>📱 Termux</b></summary>
 
 ```bash
 pkg update
@@ -211,97 +124,112 @@ pkg install -y tsu python wpa-supplicant pixiewps iw openssl \
                 iproute2 wireless-tools binutils
 pip install flask wcwidth
 ```
+</details>
 
-## Download
-
-```bash
-git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
-cd opx-oneshot
-```
-
-## Run
-
-### Linux / Kali
+### Run
 
 ```bash
+# Linux / Kali
 sudo python3 oneshot_web.py
-```
 
-### Termux
-
-```bash
+# Termux
 sudo python oneshot_web.py
+# or: tsu -c "cd ~/opx-oneshot && python oneshot_web.py"
 ```
 
-Or with `tsu`:
-
-```bash
-tsu -c "cd ~/opx-oneshot && python oneshot_web.py"
-```
-
-## Access
-
-Open your browser and go to:
+### Access
 
 ```
-http://127.0.0.1:5000
+http://127.0.0.1:5000        # Same device
+http://<your-ip>:5000        # Another device on same network
 ```
 
-On Termux (Android), open Chrome/Firefox and navigate to `http://127.0.0.1:5000`.
+### WebUI Controls
 
-> **On the same device:** `http://127.0.0.1:5000`  
-> **From another device on the same network:** `http://<your-ip>:5000`
-
-## WebUI Features
-
-| Feature | How |
-|---------|-----|
-| Interface select | Dropdown at top, auto-refreshes |
-| Scan | Button + scrollable network list |
-| BSSID | Click a network or type manually |
-| PIN | Manual input + Generate button (3WiFi) |
-| Attack mode | Radio buttons: Pixie Dust / Bruteforce / PBC |
-| Options | Checkboxes: Write, Force, Show Cmd, Loop, Reverse, Verbose, Iface Down, MTK |
-| Delay | Number input (seconds) |
-| Vuln List | Text field for custom path |
-| Start / Stop | Buttons with status indicator |
-| Log output | Scrollable console, real-time via SSE |
+| Control | Description |
+|---------|-------------|
+| 📡 **Interface** | Dropdown with auto-refresh |
+| 🔍 **Scan** | Scans & lists networks with vuln highlight |
+| 🎯 **BSSID** | Click a network or type manually |
+| 🔑 **PIN** | Manual input + 3WiFi Generate button |
+| ⚙️ **Mode** | Radio: Pixie Dust / Bruteforce / PBC |
+| ☑️ **Options** | Write, Force, Show Cmd, Loop, Reverse, Verbose, Iface Down, MTK |
+| ⏱️ **Delay** | Seconds between PIN attempts |
+| 📋 **Vuln List** | Custom vulnerable-devices path |
+| ▶️ **Start / Stop** | With status indicator |
+| 📜 **Log** | Scrollable real-time console via SSE |
 
 ---
 
-# Original CLI (`oneshot.py`)
-
-## Install
-
-### Debian / Ubuntu
+## 🖥️ Linux Desktop (tkinter GUI)
 
 ```bash
+sudo apt install -y python3 python3-pip python3-tk python3-wcwidth python3-flask \
+                     wpasupplicant pixiewps iw wireless-tools iproute2
+git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
+cd opx-oneshot
+sudo python3 oneshot_gui.py
+```
+
+> Requires a desktop environment with X11/Wayland.
+
+---
+
+## 📱 Termux (curses TUI)
+
+> **No X11 required.** Runs entirely inside the terminal.
+
+```bash
+pkg update
+pkg install -y root-repo
+pkg install -y git tsu python wpa-supplicant pixiewps iw openssl \
+                iproute2 wireless-tools binutils
+pip install flask wcwidth
+git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
+cd opx-oneshot
+sudo python oneshot_termux.py
+```
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate |
+| `Enter` | Select |
+| `Tab` | Switch fields |
+| `Space` | Toggle |
+| `Esc` / `q` | Quit |
+
+---
+
+## ⌨️ Original CLI (`oneshot.py`)
+
+<details>
+<summary><b>Install per platform</b></summary>
+
+**Debian/Kali:**
+```bash
 sudo apt install -y python3 python3-pip python3-wcwidth python3-flask \
-                     wpasupplicant pixiewps iw wireless-tools iproute2 wget
+                     wpasupplicant pixiewps iw wireless-tools iproute2
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
 
-### Arch Linux
-
+**Arch:**
 ```bash
-sudo pacman -S wpa_supplicant pixiewps iw wireless_tools iproute2 python python-pip wget
+sudo pacman -S wpa_supplicant pixiewps iw wireless_tools iproute2 python python-pip
 pip install wcwidth
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
 
-### Fedora
-
+**Fedora:**
 ```bash
-sudo dnf install -y wpa_supplicant pixiewps iw wireless-tools iproute python3 python3-pip wget
+sudo dnf install -y wpa_supplicant pixiewps iw wireless-tools iproute python3 python3-pip
 pip3 install wcwidth
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/oneshot.py
 wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/vulnwsc.txt
 ```
 
-### Termux (CLI only)
-
+**Termux:**
 ```bash
 pkg install -y root-repo
 pkg install -y git tsu python wpa-supplicant pixiewps iw openssl \
@@ -311,8 +239,9 @@ git clone --depth 1 https://github.com/OP-AMINUL-FF/opx-oneshot.git
 cd opx-oneshot
 sudo python oneshot.py -i wlan0 --iface-down -K
 ```
+</details>
 
-## Usage
+### CLI Usage
 
 ```
 oneshot.py <arguments>
@@ -340,7 +269,7 @@ Advanced:
   -v, --verbose             Verbose output
 ```
 
-## Examples
+### Examples
 
 ```bash
 # Pixie Dust on specific BSSID
@@ -358,48 +287,51 @@ sudo python3 oneshot.py -i wlan0 --pbc
 
 ---
 
-# Troubleshooting
+## ⚠️ Troubleshooting
 
-#### "RTNETLINK answers: Operation not possible due to RF-kill"
-
-```bash
-sudo rfkill unblock wifi
-```
-
-#### "Device or resource busy (-16)"
-
-Disable Wi-Fi in system settings, kill NetworkManager, or try `--iface-down`.
-
-#### wlan0 disappears when Wi-Fi is disabled (MediaTek Android)
-
-Use `--mtk-wifi` flag to re-initialize the driver.
+| Error | Fix |
+|-------|-----|
+| `RTNETLINK: Operation not possible due to RF-kill` | `sudo rfkill unblock wifi` |
+| `Device or resource busy (-16)` | Disable Wi-Fi in system, kill NetworkManager, or use `--iface-down` |
+| `wlan0 disappears (MediaTek Android)` | Use `--mtk-wifi` to re-initialize the driver |
+| `pip: externally-managed-environment` | Use `python3-flask` via apt (modern Kali/deb) |
+| `tsu: Unknown id` | Try `sudo python3 oneshot_web.py` directly |
 
 ---
 
-# Acknowledgements
+## 📋 Package Reference
 
-- `rofl0r` — initial implementation
-- `Monohrom` — testing, bug catching, ideas
-- `Wiire` — Pixiewps development
+| Package | Debian/Kali | Arch | Fedora | Termux |
+|---------|-------------|------|--------|--------|
+| `wpa_supplicant` | `wpasupplicant` | `wpa_supplicant` | `wpa_supplicant` | `wpa-supplicant` |
+| `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` |
+| `iw` | `iw` | `iw` | `iw` | `iw` |
+| `wireless-tools` | `wireless-tools` | `wireless_tools` | `wireless-tools` | `wireless-tools` |
+| `iproute2` | `iproute2` | `iproute2` | `iproute` | `iproute2` |
+| `python` | `python3` | `python` | `python3` | `python` |
+| `tkinter` | `python3-tk` | `python-tk` | `python3-tkinter` | — (use WebUI) |
+| `wcwidth` | `python3-wcwidth` | `python-wcwidth` | `python3-wcwidth` | `pip install` |
+| `flask` | `python3-flask` | `python-flask` | `python3-flask` | `pip install` |
+| `tsu` | — | — | — | `tsu` |
+| `openssl` | *(preinstalled)* | *(preinstalled)* | *(preinstalled)* | `openssl` |
+| `binutils` | *(preinstalled)* | *(preinstalled)* | *(preinstalled)* | `binutils` |
+
+> **Just run `bash install.sh`** — it handles all of the above on any platform.
 
 ---
 
-# Complete Package Reference
+## 🙏 Acknowledgements
 
-| Package | Debian/Kali | Arch | Fedora | Termux | Needed For |
-|---------|-------------|------|--------|--------|------------|
-| `wpa_supplicant` | `wpasupplicant` | `wpa_supplicant` | `wpa_supplicant` | `wpa-supplicant` | WPS handshake |
-| `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` | `pixiewps` | Pixie Dust attack |
-| `iw` | `iw` | `iw` | `iw` | `iw` | Wi-Fi scanning |
-| `wireless-tools` | `wireless-tools` | `wireless_tools` | `wireless-tools` | `wireless-tools` | `iwconfig` detection |
-| `iproute2` | `iproute2` | `iproute2` | `iproute` | `iproute2` | `ip link` management |
-| `python3` | `python3` | `python` | `python3` | `python` | Runtime |
-| `pip` | `python3-pip` | `python-pip` | `python3-pip` | `pip` (built-in) | Python packages |
-| `tkinter` | `python3-tk` | `python-tk` | `python3-tkinter` | — (use WebUI) | Desktop GUI |
-| `wcwidth` | `python3-wcwidth` | `python-wcwidth` | `python3-wcwidth` | `pip install wcwidth` | Terminal formatting |
-| `flask` | `python3-flask` | `python-flask` | `python3-flask` | `pip install flask` | WebUI server |
-| `tsu` | — | — | — | `tsu` | Root on Termux |
-| `openssl` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `openssl` | Pixiewps |
-| `binutils` | (usually preinstalled) | (usually preinstalled) | (usually preinstalled) | `binutils` | Compilation |
+- **rofl0r** — original OneShot implementation
+- **Monohrom** — testing, bug catching, ideas
+- **Wiire** — Pixiewps development
 
-> **Tip:** Instead of installing manually, just run `bash install.sh` — it handles all of the above automatically.
+---
+
+<div align="center">
+
+**Made with ⚡ for the Wi-Fi security community**
+
+[![GitHub](https://img.shields.io/badge/GitHub-OP--AMINUL--FF-181717?style=flat-square&logo=github)](https://github.com/OP-AMINUL-FF/opx-oneshot)
+
+</div>
