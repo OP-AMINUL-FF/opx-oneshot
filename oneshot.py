@@ -569,13 +569,16 @@ class Companion:
 
     def sendOnly(self, command):
         """Sends command to wpa_supplicant"""
+        RealtimeLogger.cmd(f'wpa_ctrl: {command}')
         self.retsock.sendto(command.encode(), self.wpas_ctrl_path)
 
     def sendAndReceive(self, command):
         """Sends command to wpa_supplicant and returns the reply"""
+        RealtimeLogger.cmd(f'wpa_ctrl: {command}')
         self.retsock.sendto(command.encode(), self.wpas_ctrl_path)
         (b, address) = self.retsock.recvfrom(4096)
         inmsg = b.decode('utf-8', errors='replace')
+        RealtimeLogger.stdout(f'wpa_ctrl reply: {inmsg.strip()}')
         return inmsg
 
     @staticmethod
@@ -793,7 +796,7 @@ class Companion:
             RealtimeLogger.step(f'Trying PIN {pin}')
             cmd = f'WPS_REG {bssid} {pin}'
 
-        RealtimeLogger.cmd(f'wpa_ctrl: {cmd}')
+        RealtimeLogger.step(f'Sending WPS command to wpa_supplicant…')
         r = self.sendAndReceive(cmd)
         if 'OK' not in r:
             self.connection_status.status = 'WPS_FAIL'
@@ -970,11 +973,14 @@ class Companion:
             RealtimeLogger.info(msg)
 
     def cleanup(self):
+        RealtimeLogger.step('Cleaning up Companion resources…')
         self.retsock.close()
         self.wpas.terminate()
+        RealtimeLogger.info('wpa_supplicant terminated')
         os.remove(self.res_socket_file)
         shutil.rmtree(self.tempdir, ignore_errors=True)
         os.remove(self.tempconf)
+        RealtimeLogger.ok('Companion cleanup complete')
 
     def __del__(self):
         #self.cleanup()
