@@ -1,6 +1,27 @@
-# OneShot GUI + TUI
+# OneShot WebUI
 
 **OneShot** performs [Pixie Dust attack](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-Offline-WPS-Attack) without having to switch to monitor mode.
+
+## Quick Install (All Platforms)
+
+```bash
+# Download installer
+wget https://raw.githubusercontent.com/OP-AMINUL-FF/opx-oneshot/main/install.sh
+
+# Run installer (detects Termux/Kali/Ubuntu automatically)
+bash install.sh
+
+# Then from anywhere:
+opx-oneshot           # Start WebUI
+opx-oneshot 8080      # Start on custom port
+opx-oneshot -r        # Remove completely
+```
+
+> Installer auto-detects your OS, installs all dependencies (python, wpa_supplicant, pixiewps, iw, flask), clones the repo, and creates the global `opx-oneshot` command.
+
+---
+
+## Manual Setup
 
 This repository includes **four interfaces**:
 
@@ -10,6 +31,9 @@ This repository includes **four interfaces**:
 | `oneshot_gui.py` | Linux Desktop | tkinter GUI |
 | `oneshot_termux.py` | Termux (Android) | curses TUI |
 | `oneshot_web.py` | **Any** (Linux, Kali, Termux) | **WebUI** (browser) |
+| `install.sh` | **Any** | **Installer** (deps + global command) |
+
+After running `install.sh`, use the global command `opx-oneshot` from anywhere.
 
 All four support the same 16 CLI options mapped to interactive controls.
 
