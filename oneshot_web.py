@@ -457,7 +457,7 @@ label { font-size: 13px; color: var(--text-dim); }
 <body>
 <div class="container">
   <div class="header">
-    <h1><span>&#9762;</span> OneShot WebUI</h1>
+    <h1><span>&#9762;</span> OPX OneShot <span style="font-size:11px;color:var(--text-dim);font-weight:normal">by OP AMINUL FF</span></h1>
     <div class="iface-group">
       <label for="iface">Interface</label>
       <select id="iface"></select>
@@ -675,6 +675,11 @@ refreshIfaces();
 setInterval(refreshIfaces, 5000);
 connectSSE();
 </script>
+<div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:12px">
+  <b>OPX OneShot</b> — by <a href="https://github.com/OP-AMINUL-FF" style="color:var(--accent);text-decoration:none">OP AMINUL FF</a>
+  &nbsp;|&nbsp; <a href="https://opaminulff.vercel.app/" style="color:var(--accent);text-decoration:none" target="_blank">Website</a>
+  &nbsp;|&nbsp; <a href="https://github.com/OP-AMINUL-FF/opx-oneshot" style="color:var(--accent);text-decoration:none" target="_blank">GitHub</a>
+</div>
 </body>
 </html>'''
 
@@ -696,7 +701,8 @@ if __name__ == '__main__':
 
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     ip = get_own_ip()
-    print(f"[*] OneShot WebUI started")
+    print(f"[*] OPX OneShot WebUI — by OP AMINUL FF")
+    print(f"[*] Website: https://opaminulff.vercel.app")
     print(f"[*] Local:   http://127.0.0.1:{port}")
     print(f"[*] Network: http://{ip}:{port}")
     print(f"[*] Press Ctrl+C to stop")

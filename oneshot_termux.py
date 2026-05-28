@@ -550,7 +550,7 @@ class OneShotTUI:
             return
 
         # --- Header ---
-        title = " ONESHOT WPS v0.0.2 [Termux Full GUI] "
+        title = " OPX OneShot v0.0.2 — by OP AMINUL FF [Termux GUI] "
         self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE)
         self.stdscr.addstr(0, max(0, (self.w - len(title)) // 2), title.center(self.w-2))
         self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE)

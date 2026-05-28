@@ -219,7 +219,8 @@ case "${1:-}" in
     -u|--update|update) do_update ;;
     -r|--remove|remove|uninstall) remove_all ;;
     -h|--help|help)
-        echo "OneShot WebUI — WPS attack tool"
+        echo "OPX OneShot — by OP AMINUL FF"
+        echo "Website: https://opaminulff.vercel.app"
         echo "Usage: $CMD_NAME [OPTION]"
         echo "  (no option)   Start WebUI (http://127.0.0.1:5000)"
         echo "  <port>        Start on custom port"
@@ -261,6 +262,9 @@ show_info() {
     echo ""
     succ "=== Installation Complete ==="
     echo ""
+    echo "  OPX OneShot — by OP AMINUL FF"
+    echo "  Website: https://opaminulff.vercel.app"
+    echo ""
     echo "  Platform:     $plat"
     echo "  Install dir:  $INSTALL_DIR"
     echo "  Command:      $cmd_path"
@@ -285,7 +289,9 @@ main() {
 
     echo ""
     echo "╔═══════════════════════════════════════════╗"
-    echo "║     OneShot WebUI — Cross-platform Installer "
+    echo "║     OPX OneShot — Cross-platform Installer  "
+    echo "║     by OP AMINUL FF                       "
+    echo "║     https://opaminulff.vercel.app          "
     echo "╚═══════════════════════════════════════════╝"
     echo ""
 

@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚡ OneShot WebUI
+# ⚡ OPX OneShot
+
+### by **OP AMINUL FF**
 
 **Pixie Dust WPS Attack — No Monitor Mode Required**
 
@@ -10,15 +12,21 @@
 [![Fedora](https://img.shields.io/badge/Fedora-51A2DA?style=for-the-badge&logo=fedora&logoColor=white&labelColor=2A2A2A)](https://fedoraproject.org/)
 [![Termux](https://img.shields.io/badge/Termux-000000?style=for-the-badge&logo=terminal&logoColor=white&labelColor=2A2A2A)](https://termux.com/)
 
-[![Version](https://img.shields.io/badge/dynamic/json?style=flat-square&label=version&query=name&url=https%3A%2F%2Fapi.github.com%2Frepos%2FOP-AMINUL-FF%2Fopx-oneshot%2Freleases%2Flatest&color=blue&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot/releases)
+[![Developer](https://img.shields.io/badge/Developer-OP%20AMINUL%20FF-ff6600?style=flat-square&logo=github&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF)
+[![Company](https://img.shields.io/badge/Company-OPX-00ccff?style=flat-square&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF)
+[![Website](https://img.shields.io/badge/Website-opaminulff.vercel.app-8B5CF6?style=flat-square&logo=vercel&labelColor=1a1a2e)](https://opaminulff.vercel.app/)
+[![Version](https://img.shields.io/github/v/release/OP-AMINUL-FF/opx-oneshot?style=flat-square&color=blue&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot/releases)
 [![Stars](https://img.shields.io/github/stars/OP-AMINUL-FF/opx-oneshot?style=flat-square&color=yellow&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot)
 [![License](https://img.shields.io/badge/license-GPLv3-green?style=flat-square&labelColor=1a1a2e)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.6%2B-3776AB?style=flat-square&logo=python&logoColor=white&labelColor=1a1a2e)](https://python.org)
-[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot/pulls)
 
 ---
 
-**4 interfaces · 16 CLI options mapped · Same attack engine · Cross-platform**
+**🔥 4 interfaces · 16 CLI options mapped · Same attack engine · Cross-platform**
+
+**👨‍💻 Developer:** OP AMINUL FF  
+**🏢 Company:** OPX  
+**🌐 Website:** [https://opaminulff.vercel.app](https://opaminulff.vercel.app/)  
+**📦 Tool:** `opx-oneshot`
 
 </div>
 
@@ -43,7 +51,7 @@ Then from **anywhere**:
 | `opx-oneshot -u` | 🔄 Update to latest version |
 | `opx-oneshot -r` | 🗑️ Remove completely |
 
-> Installer auto-detects your OS, installs **all** dependencies, clones the repo, and creates the global `opx-oneshot` command — usable from anywhere.
+> Installer auto-detects your OS, installs **all** dependencies, clones the repo, and creates the global **opx-oneshot** command — usable from anywhere.
 
 ---
 
@@ -325,13 +333,25 @@ sudo python3 oneshot.py -i wlan0 --pbc
 - **rofl0r** — original OneShot implementation
 - **Monohrom** — testing, bug catching, ideas
 - **Wiire** — Pixiewps development
+- **OP AMINUL FF** — GUI/TUI/WebUI development, cross-platform installer
 
 ---
 
 <div align="center">
 
+### 🏢 **OPX** — by **OP AMINUL FF**
+
 **Made with ⚡ for the Wi-Fi security community**
 
-[![GitHub](https://img.shields.io/badge/GitHub-OP--AMINUL--FF-181717?style=flat-square&logo=github)](https://github.com/OP-AMINUL-FF/opx-oneshot)
+[![Developer](https://img.shields.io/badge/Developer-OP%20AMINUL%20FF-ff6600?style=for-the-badge&logo=github&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF)
+[![Website](https://img.shields.io/badge/Website-opaminulff.vercel.app-8B5CF6?style=for-the-badge&logo=vercel&labelColor=1a1a2e)](https://opaminulff.vercel.app/)
+[![Tool](https://img.shields.io/badge/Tool-opx--oneshot-00ccff?style=for-the-badge&logo=git&labelColor=1a1a2e)](https://github.com/OP-AMINUL-FF/opx-oneshot)
+
+```
+OPX OneShot — opx-oneshot
+Developer  : OP AMINUL FF
+Company    : OPX
+Website    : https://opaminulff.vercel.app
+```
 
 </div>

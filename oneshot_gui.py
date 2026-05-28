@@ -613,7 +613,7 @@ class MessagesDialog(tk.Toplevel):
 class OneShotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("OneShot WPS Tool v0.0.2")
+        self.root.title("OPX OneShot v0.0.2 — by OP AMINUL FF")
         self.root.geometry("960x780")
         self.root.minsize(800, 600)
         self.root.option_add('*tearOff', False)
