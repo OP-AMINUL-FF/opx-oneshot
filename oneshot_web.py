@@ -17,7 +17,7 @@ except ImportError:
 import oneshot
 oneshot.args = argparse.Namespace(loop=False, reverse_scan=False)
 
-from oneshot import Companion, WiFiScanner, NetworkAddress, WPSpin
+from oneshot import Companion, WiFiScanner, NetworkAddress, WPSpin, RealtimeLogger
 
 # ============================================================
 # Global State
@@ -54,9 +54,9 @@ def save_history(essid, bssid, pin, psk, mode):
     try:
         with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
             json.dump(history, f, indent=2, ensure_ascii=False)
-        print(f"[+] Credentials saved to history: {essid}")
+        RealtimeLogger.ok(f"Credentials saved to history: {essid}")
     except Exception as e:
-        print(f"[-] Failed to save history: {e}")
+        RealtimeLogger.err(f"Failed to save history: {e}")
 
 # ============================================================
 # Missing CLI features: saved PIN, session restore, PIN list
@@ -221,12 +221,12 @@ def get_own_ip():
 def ifaceUp(iface, down=False):
     action = 'down' if down else 'up'
     cmd = 'ip link set {} {}'.format(iface, action)
-    print(f"[*] Running: {cmd}")
-    res = subprocess.run(cmd, shell=True, stdout=sys.stdout, stderr=sys.stdout)
+    RealtimeLogger.cmd(cmd)
+    res = RealtimeLogger.run_subprocess(cmd)
     if res.returncode == 0:
-        print(f"[+] Interface {iface} is {action}")
+        RealtimeLogger.ok(f'Interface {iface} is {action}')
     else:
-        print(f"[-] Failed to bring {iface} {action} (exit code {res.returncode})")
+        RealtimeLogger.err(f'Failed to bring {iface} {action} (exit {res.returncode})')
     return res.returncode == 0
 
 # ============================================================
@@ -237,27 +237,21 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
     oneshot.args.reverse_scan = reverse
     try:
         with LogCapture():
-            print(f"[*] Starting scan on {iface}...")
+            RealtimeLogger.separator()
+            RealtimeLogger.step(f'Starting Wi‑Fi scan on {iface}')
 
             # Step 1: Check if interface is wireless
-            print(f"[*] iw dev {iface} info")
+            RealtimeLogger.cmd(f'iw dev {iface} info')
             iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                     encoding='utf-8', errors='replace')
+                                     stdout=sys.stdout, stderr=sys.stdout)
             if iw_info.returncode != 0:
-                for line in iw_info.stdout.strip().split('\n'):
-                    if line.strip():
-                        print(f"  {line.strip()}")
-                print(f"[-] ERROR: '{iface}' is NOT a wireless interface")
-                print("[*] Select a wireless interface (wlan0, wlp2s0, etc.)")
+                RealtimeLogger.err(f"'{iface}' is NOT a wireless interface")
+                RealtimeLogger.info("Select a wireless interface (wlan0, wlp2s0, etc.)")
                 return
-            for line in iw_info.stdout.strip().split('\n'):
-                if line.strip():
-                    print(f"  {line.strip()}")
 
             # Step 2: Bring interface up
             if not ifaceUp(iface):
-                print(f"[-] Failed to bring up {iface}")
+                RealtimeLogger.err(f"Failed to bring up {iface}")
                 return
 
             # Step 3: Load vuln list
@@ -265,46 +259,46 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     current_vuln_list = f.read().splitlines()
-                print(f"[*] Loaded {len(current_vuln_list)} vulnerable devices from {os.path.basename(path)}")
+                RealtimeLogger.info(f"Loaded {len(current_vuln_list)} vulnerable devices from {os.path.basename(path)}")
             except:
                 current_vuln_list = []
-                print("[*] No vuln list loaded")
+                RealtimeLogger.info("No vuln list loaded")
 
-            # Step 4: Run iw scan - REAL raw output streamed directly
-            print(f"[*] iw dev {iface} scan")
-            scan_proc = subprocess.run(f'iw dev {iface} scan', shell=True,
-                                       stdout=sys.stdout, stderr=sys.stdout)
-            print(f"[*] iw exit code: {scan_proc.returncode}")
+            # Step 4: Run iw scan with real-time streaming
+            RealtimeLogger.cmd(f'iw dev {iface} scan')
+            RealtimeLogger.step('Scanning for Wi‑Fi networks (this may take 5‑10 seconds)…')
+            scan_proc = RealtimeLogger.run_subprocess(f'iw dev {iface} scan')
             if scan_proc.returncode != 0:
-                print(f"[-] Scan command failed with exit code {scan_proc.returncode}")
-                print("[*] This interface does not support wireless scanning")
+                RealtimeLogger.err(f"Scan command failed with exit code {scan_proc.returncode}")
+                RealtimeLogger.info("This interface does not support wireless scanning")
                 return
 
             # Step 5: Parse results via WiFiScanner
-            print("[*] Parsing scan results...")
+            RealtimeLogger.step('Parsing scan results…')
             scanner = WiFiScanner(iface, current_vuln_list)
             result = scanner.iw_scanner()
             scan_results = list(result.values()) if result else []
             count = len(scan_results)
             if count > 0:
-                print(f"[+] Scan SUCCESS: {count} network(s) found on {iface}")
+                RealtimeLogger.ok(f"Scan SUCCESS: {count} network(s) found on {iface}")
                 for n in scan_results[:10]:
                     essid = n.get('ESSID', '<hidden>')
                     bssid = n.get('BSSID', '')
                     ch = n.get('Channel', '')
                     sig = n.get('Level', '')
                     wps = n.get('WPS', '')
-                    print(f"    {bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
+                    RealtimeLogger.stdout(f"{bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
                 if count > 10:
-                    print(f"    ... and {count-10} more")
+                    RealtimeLogger.info(f"... and {count-10} more")
             else:
-                print(f"[-] Scan FAILED: No WPS networks found")
-                print("[*] Possible causes: no WPS-enabled APs nearby, or wrong interface")
+                RealtimeLogger.err("Scan FAILED: No WPS networks found")
+                RealtimeLogger.info("Possible causes: no WPS-enabled APs nearby, or wrong interface")
     except Exception as e:
-        print(f"[-] Scan error: {e}")
+        RealtimeLogger.err(f"Scan error: {e}")
         import traceback
-        print(f"[-] Traceback:\n{traceback.format_exc()}")
+        RealtimeLogger.stdout(traceback.format_exc())
     finally:
+        RealtimeLogger.separator()
         log_queue.put('__SCAN_DONE__')
 
 def do_attack_in_thread(params):
@@ -330,54 +324,55 @@ def do_attack_in_thread(params):
 
     try:
         with LogCapture():
-            print(f"[*] ===== Attack Configuration =====")
-            print(f"[*] Interface : {iface}")
-            print(f"[*] BSSID     : {bssid}")
-            print(f"[*] PIN       : {pin if pin else '(auto)'}")
-            print(f"[*] Delay     : {delay}s")
-            print(f"[*] Mode      : {'PBC' if pbc else 'Bruteforce' if bruteforce else 'Pixie' if pixie else 'PIN'}")
-            print(f"[*] Loop      : {'Yes' if loop else 'No'}")
-            print(f"[*] Verbose   : {'Yes' if verbose else 'No'}")
-            print(f"[*] Write     : {'Yes' if write else 'No'}")
-            print(f"[*] Iface Down: {'Yes' if iface_down else 'No'}")
-            print(f"[*] PixieForce: {'Yes' if pixie_force else 'No'}")
-            print(f"[*] Show Cmd  : {'Yes' if show_cmd else 'No'}")
-            print(f"[*] MTK WiFi  : {'Yes' if mtk else 'No'}")
-            print(f"[*] =================================")
+            RealtimeLogger.separator()
+            RealtimeLogger.step('Attack starting — configuration:')
+            RealtimeLogger.info(f'Interface : {iface}')
+            RealtimeLogger.info(f'BSSID     : {bssid}')
+            RealtimeLogger.info(f'PIN       : {pin if pin else "(auto)"}')
+            RealtimeLogger.info(f'Delay     : {delay}s')
+            RealtimeLogger.info(f'Mode      : {"PBC" if pbc else "Bruteforce" if bruteforce else "Pixie" if pixie else "PIN"}')
+            RealtimeLogger.info(f'Loop      : {"Yes" if loop else "No"}')
+            RealtimeLogger.info(f'Verbose   : {"Yes" if verbose else "No"}')
+            RealtimeLogger.info(f'Write     : {"Yes" if write else "No"}')
+            RealtimeLogger.info(f'Iface Down: {"Yes" if iface_down else "No"}')
+            RealtimeLogger.info(f'PixieForce: {"Yes" if pixie_force else "No"}')
+            RealtimeLogger.info(f'Show Cmd  : {"Yes" if show_cmd else "No"}')
+            RealtimeLogger.info(f'MTK WiFi  : {"Yes" if mtk else "No"}')
+            RealtimeLogger.separator()
 
             # Check if interface supports wireless
-            print(f"[*] iw dev {iface} info")
+            RealtimeLogger.cmd(f'iw dev {iface} info')
             iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
                                      stdout=sys.stdout, stderr=sys.stdout)
             if iw_info.returncode != 0:
-                print(f"[-] ERROR: '{iface}' is NOT a wireless interface — cannot attack")
-                print("[*] Select a wireless interface (wlan0, wlp2s0, etc.)")
+                RealtimeLogger.err(f"'{iface}' is NOT a wireless interface — cannot attack")
+                RealtimeLogger.info("Select a wireless interface (wlan0, wlp2s0, etc.)")
                 return
 
             if mtk:
                 from pathlib import Path
                 wmt = Path('/dev/wmtWifi')
                 if wmt.is_char_device():
-                    print("[*] Enabling MediaTek WiFi interface...")
+                    RealtimeLogger.step("Enabling MediaTek WiFi interface...")
                     wmt.chmod(0o644)
                     wmt.write_text('1')
-                    print("[+] /dev/wmtWifi enabled")
+                    RealtimeLogger.ok("/dev/wmtWifi enabled")
                 else:
-                    print("[-] /dev/wmtWifi not found")
+                    RealtimeLogger.err("/dev/wmtWifi not found")
                     return
 
             if not ifaceUp(iface):
-                print(f"[-] Failed to bring up {iface}")
+                RealtimeLogger.err(f"Failed to bring up {iface}")
                 return
 
             while True:
                 companion = None
                 try:
                     if stop_event.is_set():
-                        print("[!] Attack stopped by user")
+                        RealtimeLogger.warn("Attack stopped by user")
                         break
 
-                    print(f"[*] Creating Companion for {iface}...")
+                    RealtimeLogger.step(f"Creating Companion for {iface}...")
                     oneshot.args.loop = loop
                     companion = Companion(iface, write, print_debug=verbose)
                     current_companion = companion
@@ -385,42 +380,43 @@ def do_attack_in_thread(params):
                     atk_pin = pin
                     if pbc:
                         atk_pin = '<PBC>'
-                        print(f"[*] Starting PBC connection...")
+                        RealtimeLogger.step("Starting PBC connection...")
                         companion.single_connection(pbc_mode=True)
                     elif bruteforce:
-                        # CLI smart_bruteforce: restore session if no pin given
                         if not atk_pin:
                             saved_mask = get_saved_session(bssid)
                             if saved_mask:
-                                print(f"[*] Restored previous bruteforce session, continuing from mask {saved_mask}...")
+                                RealtimeLogger.info(f"Restored bruteforce session, continuing from mask {saved_mask}")
                                 atk_pin = saved_mask
                             else:
                                 atk_pin = '0000'
-                                print(f"[*] No saved session, starting bruteforce from {atk_pin}...")
+                                RealtimeLogger.info(f"No saved session, starting bruteforce from {atk_pin}")
                         else:
-                            print(f"[*] Starting bruteforce from PIN {atk_pin}...")
+                            RealtimeLogger.info(f"Starting bruteforce from PIN {atk_pin}")
                         companion.smart_bruteforce(bssid, atk_pin, delay)
                     else:
                         if pixie and not atk_pin:
-                            # CLI single_connection lines 700-708: check saved PIN first
                             saved_pin = get_saved_pin(bssid)
                             if saved_pin:
                                 atk_pin = saved_pin
-                                print(f"[*] Using previously calculated PIN: {atk_pin}")
+                                RealtimeLogger.info(f"Using previously calculated PIN: {atk_pin}")
                             else:
                                 atk_pin = WPSpin().getLikely(bssid) or '12345670'
-                                print(f"[*] Generated PIN: {atk_pin}")
-                        print(f"[*] Starting {'Pixie Dust' if pixie else 'PIN'} attack with PIN {atk_pin}...")
+                                RealtimeLogger.info(f"Generated PIN: {atk_pin}")
+                        mode = 'Pixie Dust' if pixie else 'PIN'
+                        RealtimeLogger.step(f"Starting {mode} attack with PIN {atk_pin}")
                         companion.single_connection(bssid, atk_pin, pixie, False,
                                                     show_cmd, pixie_force)
 
                     if companion.connection_status.status == 'GOT_PSK':
                         cs = companion.connection_status
-                        print(f"[+] SUCCESS! Credentials obtained:")
-                        print(f"    ESSID : {cs.essid or bssid}")
-                        print(f"    BSSID : {cs.bssid or bssid}")
-                        print(f"    PIN   : {atk_pin}")
-                        print(f"    PSK   : {cs.wpa_psk}")
+                        RealtimeLogger.separator()
+                        RealtimeLogger.ok("SUCCESS! Credentials obtained:")
+                        RealtimeLogger.info(f"  ESSID : {cs.essid or bssid}")
+                        RealtimeLogger.info(f"  BSSID : {cs.bssid or bssid}")
+                        RealtimeLogger.ok(f"  PIN   : {atk_pin}")
+                        RealtimeLogger.ok(f"  PSK   : {cs.wpa_psk}")
+                        RealtimeLogger.separator()
                         save_history(
                             essid=cs.essid or bssid,
                             bssid=cs.bssid or bssid,
@@ -432,33 +428,33 @@ def do_attack_in_thread(params):
                         cs = getattr(companion, 'connection_status', None)
                         failed_bssid = getattr(cs, 'bssid', None) or bssid
                         fail_status = getattr(cs, 'status', 'N/A')
-                        print(f"[-] Attack FAILED for {failed_bssid}")
-                        print(f"[-] Status: {fail_status}")
-                        print("[*] Try: different PIN, Pixie Dust mode, or check signal strength")
+                        RealtimeLogger.err(f"Attack FAILED for {failed_bssid}")
+                        RealtimeLogger.err(f"Status: {fail_status}")
+                        RealtimeLogger.info("Try: different PIN, Pixie Dust mode, or check signal strength")
 
                     if not loop:
-                        print("[*] Attack complete (single mode)")
+                        RealtimeLogger.step("Attack complete (single mode)")
                         break
                     else:
-                        print("[*] Loop iteration complete, continuing...")
+                        RealtimeLogger.info("Loop iteration complete, continuing...")
                 except KeyboardInterrupt:
                     if loop:
-                        print("[?] Continuing loop...")
+                        RealtimeLogger.info("Continuing loop...")
                     else:
-                        print("\n[!] Aborting…")
+                        RealtimeLogger.warn("Aborting…")
                         break
                 finally:
                     if companion is not None:
                         try:
                             companion.cleanup()
-                            print("[*] Companion cleaned up")
+                            RealtimeLogger.info("Companion cleaned up")
                         except:
                             pass
                     current_companion = None
     except Exception as e:
-        print(f"[-] Attack error: {e}")
+        RealtimeLogger.err(f"Attack error: {e}")
         import traceback
-        print(f"[-] Traceback:\n{traceback.format_exc()}")
+        RealtimeLogger.stdout(traceback.format_exc())
     finally:
         if iface_down:
             ifaceUp(iface, down=True)
@@ -468,6 +464,7 @@ def do_attack_in_thread(params):
             except:
                 pass
         attack_running = False
+        RealtimeLogger.separator()
         log_queue.put('__ATTACK_DONE__')
 
 # ============================================================
@@ -560,7 +557,7 @@ def api_attack():
     params = request.get_json()
     bssid = params.get('bssid', '')
     mode = 'PBC' if params.get('pbc') else 'Bruteforce' if params.get('bruteforce') else ('Pixie' if params.get('pixie') else 'PIN')
-    log_queue.put(f'[*] Attack requested: {mode} mode on {bssid}')
+    log_queue.put(f'[*] Attack requested: {mode} on {bssid}')
     operation_thread = threading.Thread(target=do_attack_in_thread, args=(params,), daemon=True)
     operation_thread.start()
     log_queue.put(f'[+] Attack thread started')
@@ -717,8 +714,12 @@ label { font-size: 13px; color: var(--text-dim); }
 }
 .log-box .ts { color: var(--text-dim); }
 .log-box .info { color: var(--green); }
+.log-box .ok   { color: var(--green); font-weight: bold; }
 .log-box .warn { color: var(--orange); }
-.log-box .err { color: var(--red); }
+.log-box .err  { color: var(--red); }
+.log-box .cmd  { color: var(--accent); }
+.log-box .step { color: var(--accent); font-weight: bold; }
+.log-box .line { color: var(--text-dim); font-style: italic; }
 .ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
 .pin-row { display: flex; gap: 8px; align-items: center; }
 .pin-row input { flex: 1; font-family: monospace; letter-spacing: 2px; }
@@ -873,11 +874,20 @@ let selectedBssid = '';
 function log(msg, cls='info') {
   const box = document.getElementById('logBox');
   const t = new Date().toLocaleTimeString();
-  box.innerHTML += `<span class="ts">[${t}]</span> <span class="${cls}">${escapeHtml(msg)}</span>\n`;
+  // Detect prefix symbols from RealtimeLogger and map to CSS classes
+  const trimmed = msg.trimStart();
+  let cssClass = cls;
+  if (trimmed.startsWith('✔')) { cssClass = 'ok'; }
+  else if (trimmed.startsWith('✖') || trimmed.startsWith('!') || trimmed.startsWith('[-]')) { cssClass = 'err'; }
+  else if (trimmed.startsWith('⚠') || trimmed.startsWith('[?]') || trimmed.startsWith('[!]')) { cssClass = 'warn'; }
+  else if (trimmed.startsWith('▸')) { cssClass = 'cmd'; }
+  else if (trimmed.startsWith('│')) { cssClass = 'line'; }
+  else if (trimmed.startsWith('◈') || trimmed.startsWith('[*]')) { cssClass = 'step'; }
+  else if (trimmed.startsWith('ℹ') || trimmed.startsWith('[i]')) { cssClass = 'info'; }
+  else if (trimmed.startsWith('[+]')) { cssClass = 'ok'; }
+  box.innerHTML += `<span class="ts">[${t}]</span> <span class="${cssClass}">${escapeHtml(msg)}</span>\n`;
   box.scrollTop = box.scrollHeight;
 }
-
-// Log every UI interaction: buttons, checkboxes, radios, inputs, selects
 function initUILogger() {
   document.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', function(e) {

