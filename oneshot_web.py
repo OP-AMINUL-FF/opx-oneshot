@@ -25,6 +25,7 @@ from oneshot import Companion, WiFiScanner, NetworkAddress, WPSpin
 log_queue = queue.Queue()
 stop_event = threading.Event()
 scan_results = []
+current_vuln_list = []
 attack_running = False
 current_companion = None
 operation_thread = None
@@ -90,21 +91,24 @@ def ifaceUp(iface, down=False):
 # ============================================================
 # Background Workers
 # ============================================================
-def do_scan_in_thread(iface):
-    global scan_results
+def do_scan_in_thread(iface, vuln_path='', reverse=False):
+    global scan_results, current_vuln_list
+    oneshot.args.reverse_scan = reverse
     with LogCapture():
         try:
             if not ifaceUp(iface):
                 print(f"[-] Failed to bring up {iface}")
                 return
-            with open(oneshot.args.vuln_list if hasattr(oneshot.args, 'vuln_list') and oneshot.args.vuln_list
-                      else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vulnwsc.txt'),
-                      'r', encoding='utf-8') as f:
-                vuln_list = f.read().splitlines()
+            path = vuln_path or os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vulnwsc.txt')
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    current_vuln_list = f.read().splitlines()
+            except:
+                current_vuln_list = []
         except:
-            vuln_list = []
+            current_vuln_list = []
         try:
-            scanner = WiFiScanner(iface, vuln_list)
+            scanner = WiFiScanner(iface, current_vuln_list)
             result = scanner.iw_scanner()
             scan_results = list(result.values()) if result else []
         except Exception as e:
@@ -204,7 +208,9 @@ def api_interfaces():
 def api_scan():
     global operation_thread
     iface = request.args.get('interface', 'wlan0')
-    operation_thread = threading.Thread(target=do_scan_in_thread, args=(iface,), daemon=True)
+    vuln_path = request.args.get('vuln_list', '')
+    reverse = request.args.get('reverse', 'false').lower() == 'true'
+    operation_thread = threading.Thread(target=do_scan_in_thread, args=(iface, vuln_path, reverse), daemon=True)
     operation_thread.start()
     return jsonify({'status': 'ok'})
 
@@ -212,15 +218,17 @@ def api_scan():
 def api_networks():
     data = []
     for n in scan_results:
+        model = '{} {}'.format(n.get('Model', ''), n.get('Model number', '')).strip()
+        vuln = bool(current_vuln_list and model in current_vuln_list)
         data.append({
             'bssid': n.get('BSSID', ''),
             'essid': n.get('ESSID', '<hidden>'),
-            'channel': '',
+            'channel': n.get('Channel', ''),
             'signal': str(n.get('Level', '')),
             'encrypted': n.get('Security type', ''),
             'wps': str(n.get('WPS', '')),
             'locked': n.get('WPS locked', False),
-            'vuln': False,
+            'vuln': vuln,
         })
     return jsonify(data)
 
@@ -229,8 +237,8 @@ def api_generate_pin():
     bssid = request.args.get('bssid', '')
     bssid = bssid.replace('-', ':').upper()
     try:
-        pin = WPSpin(bssid)
-        return jsonify({'pin': pin.get_pin() if hasattr(pin, 'get_pin') else str(pin)})
+        pin = WPSpin().getLikely(bssid)
+        return jsonify({'pin': pin if pin else 'No PIN generated'})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -477,9 +485,11 @@ function refreshIfaces() {
 
 function startScan() {
   const iface = document.getElementById('iface').value;
+  const vuln = document.getElementById('vuln_list').value;
+  const rev = document.getElementById('opt_reverse').checked;
   document.getElementById('netList').innerHTML = '<div style="padding:8px;color:var(--orange);font-size:13px">Scanning...</div>';
   document.getElementById('scanBtn').disabled = true;
-  fetch(`/api/scan?interface=${encodeURIComponent(iface)}`);
+  fetch(`/api/scan?interface=${encodeURIComponent(iface)}&vuln_list=${encodeURIComponent(vuln)}&reverse=${rev}`);
 }
 
 function loadNetworks() {
