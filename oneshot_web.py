@@ -214,18 +214,25 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
             scanner = WiFiScanner(iface, current_vuln_list)
             result = scanner.iw_scanner()
             scan_results = list(result.values()) if result else []
-            print(f"[+] Scan complete: {len(scan_results)} network(s) found")
-            for n in scan_results[:5]:
-                essid = n.get('ESSID', '<hidden>')
-                bssid = n.get('BSSID', '')
-                ch = n.get('Channel', '')
-                sig = n.get('Level', '')
-                wps = n.get('WPS', '')
-                print(f"    {bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
-            if len(scan_results) > 5:
-                print(f"    ... and {len(scan_results)-5} more")
+            count = len(scan_results)
+            if count > 0:
+                print(f"[+] Scan SUCCESS: {count} network(s) found on {iface}")
+                for n in scan_results[:5]:
+                    essid = n.get('ESSID', '<hidden>')
+                    bssid = n.get('BSSID', '')
+                    ch = n.get('Channel', '')
+                    sig = n.get('Level', '')
+                    wps = n.get('WPS', '')
+                    print(f"    {bssid}  {essid}  CH{ch}  {sig}dBm  WPS:{wps}")
+                if count > 5:
+                    print(f"    ... and {count-5} more")
+            else:
+                print(f"[-] Scan FAILED: No networks found on {iface}")
+                print("[*] Possible causes: interface not in monitor mode, no APs nearby, or driver issue")
     except Exception as e:
         print(f"[-] Scan error: {e}")
+        import traceback
+        print(f"[-] Traceback:\n{traceback.format_exc()}")
     finally:
         log_queue.put('__SCAN_DONE__')
 
@@ -326,6 +333,13 @@ def do_attack_in_thread(params):
                             psk=cs.wpa_psk,
                             mode='pixie' if pixie else 'bruteforce' if bruteforce else 'pbc'
                         )
+                    else:
+                        cs = getattr(companion, 'connection_status', None)
+                        failed_bssid = getattr(cs, 'bssid', None) or bssid
+                        fail_status = getattr(cs, 'status', 'N/A')
+                        print(f"[-] Attack FAILED for {failed_bssid}")
+                        print(f"[-] Status: {fail_status}")
+                        print("[*] Try: different PIN, Pixie Dust mode, or check signal strength")
 
                     if not loop:
                         print("[*] Attack complete (single mode)")
@@ -348,6 +362,8 @@ def do_attack_in_thread(params):
                     current_companion = None
     except Exception as e:
         print(f"[-] Attack error: {e}")
+        import traceback
+        print(f"[-] Traceback:\n{traceback.format_exc()}")
     finally:
         if iface_down:
             ifaceUp(iface, down=True)
@@ -646,7 +662,7 @@ label { font-size: 13px; color: var(--text-dim); }
     <h1><span>&#9762;</span> OPX OneShot <span style="font-size:11px;color:var(--text-dim);font-weight:normal">v0.0.2 by OP AMINUL FF</span></h1>
     <div class="iface-group">
       <label for="iface">Interface</label>
-      <select id="iface"></select>
+      <select id="iface" onchange="log(`[*] Interface changed to: ${this.value}`)"></select>
       <button class="btn" onclick="refreshIfaces()">&#8635;</button>
     </div>
   </div>
