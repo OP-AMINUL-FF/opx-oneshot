@@ -1008,6 +1008,13 @@ class OneShotTUI:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ('-u', '--update', 'update'):
+        _dir = os.path.dirname(os.path.abspath(__file__))
+        print("[*] Updating OneShot in {}...".format(_dir))
+        r = subprocess.run(['git', 'pull'], cwd=_dir, capture_output=True, text=True)
+        print(r.stdout + r.stderr)
+        sys.exit(0 if r.returncode == 0 else 1)
+
     if sys.hexversion < 0x03060F0: print("Python 3.6+ required"); sys.exit(1)
     try: curses.wrapper(lambda s: OneShotTUI(s).run())
     except KeyboardInterrupt: pass

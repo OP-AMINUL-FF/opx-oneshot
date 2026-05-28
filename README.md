@@ -15,11 +15,13 @@ bash install.sh
 # Then from anywhere:
 opx-oneshot           # Start WebUI
 opx-oneshot 8080      # Start on custom port
-opx-oneshot -u        # Update to latest version
+opx-oneshot -u        # Update to latest version (from anywhere)
 opx-oneshot -r        # Remove completely
 ```
 
 > Installer auto-detects your OS, installs **all** dependencies (python, pip, wpa_supplicant, pixiewps, iw, wireless-tools, iproute2, tkinter, wcwidth, flask, tsu), clones the repo, and creates the global `opx-oneshot` command.
+>
+> **Update anytime with:** `opx-oneshot -u` or `sudo python3 oneshot_web.py -u` (works from anywhere)
 
 ---
 

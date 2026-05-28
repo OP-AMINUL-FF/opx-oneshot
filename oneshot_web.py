@@ -682,6 +682,14 @@ connectSSE();
 # Main
 # ============================================================
 if __name__ == '__main__':
+    if len(sys.argv) > 1 and sys.argv[1] in ('-u', '--update', 'update'):
+        import subprocess as _sp
+        _dir = os.path.dirname(os.path.abspath(__file__))
+        print(f"[*] Updating OneShot in {_dir}...")
+        r = _sp.run(['git', 'pull'], cwd=_dir, capture_output=True, text=True)
+        print(r.stdout + r.stderr)
+        sys.exit(0 if r.returncode == 0 else 1)
+
     if os.geteuid() != 0:
         print("[-] Root privileges required. Run with sudo.")
         sys.exit(1)
