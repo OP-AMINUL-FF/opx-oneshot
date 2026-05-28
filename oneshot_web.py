@@ -62,13 +62,41 @@ class LogCapture:
 # ============================================================
 def get_wifi_interfaces():
     ifaces = []
+    seen = set()
+    # Method 1: iw dev
     try:
         r = subprocess.run(['iw', 'dev'], capture_output=True, text=True)
         for line in r.stdout.split('\n'):
             if 'Interface' in line:
-                ifaces.append(line.split()[-1])
+                iface = line.split()[-1]
+                if iface not in seen:
+                    ifaces.append(iface)
+                    seen.add(iface)
     except:
         pass
+    # Method 2: iwconfig
+    if not ifaces:
+        try:
+            r = subprocess.run(['iwconfig'], capture_output=True, text=True)
+            for line in r.stdout.split('\n'):
+                if 'IEEE' in line or 'ESSID' in line:
+                    iface = line.split()[0]
+                    if iface not in seen:
+                        ifaces.append(iface)
+                        seen.add(iface)
+        except:
+            pass
+    # Method 3: /proc/net/wireless
+    if not ifaces:
+        try:
+            with open('/proc/net/wireless') as f:
+                for line in f.readlines()[2:]:
+                    iface = line.strip().split(':')[0]
+                    if iface not in seen:
+                        ifaces.append(iface)
+                        seen.add(iface)
+        except:
+            pass
     return ifaces if ifaces else ['wlan0']
 
 def get_own_ip():
