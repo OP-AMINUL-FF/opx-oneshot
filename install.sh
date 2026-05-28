@@ -289,9 +289,9 @@ main() {
 
     echo ""
     echo "╔═══════════════════════════════════════════╗"
-    echo "║     OPX OneShot — Cross-platform Installer  "
-    echo "║     by OP AMINUL FF                       "
-    echo "║     https://opaminulff.vercel.app          "
+    echo "║     OPX OneShot — Cross-platform Installer  ║"
+    echo "║     by OP AMINUL FF                       ║"
+    echo "║     https://opaminulff.vercel.app          ║"
     echo "╚═══════════════════════════════════════════╝"
     echo ""
 

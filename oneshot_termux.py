@@ -939,7 +939,7 @@ class OneShotTUI:
 
     def _help_screen(self):
         lines = [
-            "Oneshot WPS Tool v0.0.2 - Termux Full GUI",
+            "OPX OneShot v0.0.2 - Termux Full GUI",
             "",
             "=== CLI -> GUI Mapping ===",
             "-i --interface          : Options [1] / main screen",

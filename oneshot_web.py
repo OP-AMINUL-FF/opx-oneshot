@@ -418,7 +418,7 @@ HTML = r'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OneShot WebUI</title>
+<title>OPX OneShot v0.0.2</title>
 <style>
 :root {
   --bg: #0d1117;
@@ -556,7 +556,7 @@ label { font-size: 13px; color: var(--text-dim); }
 <body>
 <div class="container">
   <div class="header">
-    <h1><span>&#9762;</span> OPX OneShot <span style="font-size:11px;color:var(--text-dim);font-weight:normal">by OP AMINUL FF</span></h1>
+    <h1><span>&#9762;</span> OPX OneShot <span style="font-size:11px;color:var(--text-dim);font-weight:normal">v0.0.2 by OP AMINUL FF</span></h1>
     <div class="iface-group">
       <label for="iface">Interface</label>
       <select id="iface"></select>
@@ -857,7 +857,11 @@ if __name__ == '__main__':
         print("[-] Root privileges required. Run with sudo.")
         sys.exit(1)
 
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    try:
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    except ValueError:
+        print("[-] Invalid port: {}".format(sys.argv[1]))
+        sys.exit(1)
     ip = get_own_ip()
     print(f"[*] OPX OneShot WebUI — by OP AMINUL FF")
     print(f"[*] Website: https://opaminulff.vercel.app")
