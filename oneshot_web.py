@@ -241,9 +241,7 @@ def do_scan_in_thread(iface, vuln_path='', reverse=False):
             RealtimeLogger.step(f'Starting Wi‑Fi scan on {iface}')
 
             # Step 1: Check if interface is wireless
-            RealtimeLogger.cmd(f'iw dev {iface} info')
-            iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
-                                     stdout=sys.stdout, stderr=sys.stdout)
+            iw_info = RealtimeLogger.run_subprocess(f'iw dev {iface} info')
             if iw_info.returncode != 0:
                 RealtimeLogger.err(f"'{iface}' is NOT a wireless interface")
                 RealtimeLogger.info("Select a wireless interface (wlan0, wlp2s0, etc.)")
@@ -341,9 +339,7 @@ def do_attack_in_thread(params):
             RealtimeLogger.separator()
 
             # Check if interface supports wireless
-            RealtimeLogger.cmd(f'iw dev {iface} info')
-            iw_info = subprocess.run(f'iw dev {iface} info', shell=True,
-                                     stdout=sys.stdout, stderr=sys.stdout)
+            iw_info = RealtimeLogger.run_subprocess(f'iw dev {iface} info')
             if iw_info.returncode != 0:
                 RealtimeLogger.err(f"'{iface}' is NOT a wireless interface — cannot attack")
                 RealtimeLogger.info("Select a wireless interface (wlan0, wlp2s0, etc.)")
