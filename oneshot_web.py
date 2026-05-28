@@ -1,0 +1,554 @@
+#!/usr/bin/env python3
+"""
+OneShot WebUI - Cross-platform browser interface for OneShot WPS attack
+Same interface everywhere: Linux, Kali, Termux (Android)
+Single-file, all 16 CLI options mapped to GUI controls
+"""
+
+import os, sys, re, json, time, io, queue, signal, socket, threading, subprocess
+
+try:
+    from flask import Flask, request, jsonify, Response, render_template_string
+except ImportError:
+    print("[-] Flask required. Install: pip install flask")
+    sys.exit(1)
+
+from oneshot import OneShot, NetworkAddress, WPSpin, Companion, WiFiScanner
+
+# ============================================================
+# Global State
+# ============================================================
+log_queue = queue.Queue()
+stop_event = threading.Event()
+scan_results = []
+attack_running = False
+current_oneshot = None
+operation_thread = None
+
+app = Flask(__name__)
+
+# ============================================================
+# Log Capture
+# ============================================================
+class QueueIO(io.StringIO):
+    def __init__(self, q, *a, **kw):
+        super().__init__(*a, **kw)
+        self._q = q
+    def write(self, s):
+        if s.strip():
+            self._q.put(s)
+        return super().write(s)
+    def flush(self):
+        pass
+
+class LogCapture:
+    def __enter__(self):
+        self._old_stdout = sys.stdout
+        self._old_stderr = sys.stderr
+        sys.stdout = QueueIO(log_queue)
+        sys.stderr = QueueIO(log_queue)
+        return self
+    def __exit__(self, *a):
+        sys.stdout = self._old_stdout
+        sys.stderr = self._old_stderr
+
+# ============================================================
+# Helpers
+# ============================================================
+def get_wifi_interfaces():
+    ifaces = []
+    try:
+        r = subprocess.run(['iw', 'dev'], capture_output=True, text=True)
+        for line in r.stdout.split('\n'):
+            if 'Interface' in line:
+                ifaces.append(line.split()[-1])
+    except:
+        pass
+    return ifaces if ifaces else ['wlan0']
+
+def get_own_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+def do_scan_in_thread(iface):
+    global scan_results
+    with LogCapture():
+        try:
+            scanner = WiFiScanner(iface)
+            scan_results = scanner.scan()
+        except Exception as e:
+            print(f"[-] Scan error: {e}")
+    log_queue.put('__SCAN_DONE__')
+
+def do_attack_in_thread(params):
+    global attack_running, current_oneshot
+    attack_running = True
+    stop_event.clear()
+    with LogCapture():
+        try:
+            os = OneShot()
+            os.iface = params.get('iface', 'wlan0')
+            os.bssid = params.get('bssid', '')
+            os.pin = params.get('pin', '')
+            os.delay = int(params.get('delay', 0))
+            os.write = params.get('write', False)
+            os.pixie = params.get('pixie', False)
+            os.bruteforce = params.get('bruteforce', False)
+            os.pbc = params.get('pbc', False)
+            os.force = params.get('force', False)
+            os.show_cmd = params.get('show_cmd', False)
+            os.iface_down = params.get('iface_down', False)
+            os.loop = params.get('loop', False)
+            os.reverse = params.get('reverse', False)
+            os.mtk = params.get('mtk', False)
+            os.verbose = params.get('verbose', False)
+            vuln = params.get('vuln_list', '')
+            if vuln:
+                os.vuln_list = vuln
+
+            current_oneshot = os
+            os.init()
+            os.run()
+        except Exception as e:
+            print(f"[-] Attack error: {e}")
+        finally:
+            attack_running = False
+    log_queue.put('__ATTACK_DONE__')
+
+# ============================================================
+# Flask Routes
+# ============================================================
+@app.route('/')
+def index():
+    return render_template_string(HTML)
+
+@app.route('/api/interfaces')
+def api_interfaces():
+    return jsonify(get_wifi_interfaces())
+
+@app.route('/api/scan')
+def api_scan():
+    global operation_thread
+    iface = request.args.get('interface', 'wlan0')
+    operation_thread = threading.Thread(target=do_scan_in_thread, args=(iface,), daemon=True)
+    operation_thread.start()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/networks')
+def api_networks():
+    data = []
+    for n in scan_results:
+        data.append({
+            'bssid': getattr(n, 'bssid', ''),
+            'essid': getattr(n, 'essid', '') or '<hidden>',
+            'channel': getattr(n, 'channel', ''),
+            'signal': getattr(n, 'signal', ''),
+            'encrypted': getattr(n, 'encrypted', ''),
+            'wps': getattr(n, 'wps', ''),
+            'locked': getattr(n, 'locked', ''),
+            'vuln': getattr(n, 'vuln', False),
+        })
+    return jsonify(data)
+
+@app.route('/api/generate_pin')
+def api_generate_pin():
+    bssid = request.args.get('bssid', '')
+    bssid = bssid.replace('-', ':').upper()
+    try:
+        pin = WPSpin(bssid)
+        return jsonify({'pin': pin.get_pin() if hasattr(pin, 'get_pin') else str(pin)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/attack', methods=['POST'])
+def api_attack():
+    global operation_thread, attack_running
+    if attack_running:
+        return jsonify({'error': 'Attack already running'}), 400
+    params = request.get_json()
+    operation_thread = threading.Thread(target=do_attack_in_thread, args=(params,), daemon=True)
+    operation_thread.start()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/stop')
+def api_stop():
+    global current_oneshot, attack_running
+    stop_event.set()
+    if current_oneshot:
+        try:
+            current_oneshot.stop = True
+        except:
+            pass
+    attack_running = False
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/status')
+def api_status():
+    return jsonify({
+        'running': attack_running,
+        'has_results': len(scan_results) > 0,
+    })
+
+@app.route('/stream')
+def stream():
+    def generate():
+        local_q = queue.Queue()
+        while True:
+            try:
+                msg = log_queue.get(timeout=30)
+                if msg == '__SCAN_DONE__' or msg == '__ATTACK_DONE__':
+                    yield f"event: done\ndata: {json.dumps({'msg': msg})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'msg': msg})}\n\n"
+            except queue.Empty:
+                yield f": heartbeat\n\n"
+    return Response(generate(), mimetype='text/event-stream')
+
+# ============================================================
+# HTML Template
+# ============================================================
+HTML = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneShot WebUI</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --orange: #d29922;
+  --radius: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  padding: 16px; min-height: 100vh;
+}
+.container { max-width: 960px; margin: 0 auto; }
+.header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px;
+}
+.header h1 { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.header h1 span { color: var(--accent); }
+.iface-group { display: flex; align-items: center; gap: 8px; }
+.iface-group label { font-size: 13px; color: var(--text-dim); }
+.iface-group select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+  padding: 4px 8px; font-size: 13px; cursor: pointer;
+}
+.row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.col { flex: 1; min-width: 280px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px;
+}
+.card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 8px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--border);
+  border-radius: 4px; font-size: 13px; cursor: pointer; background: var(--bg); color: var(--text); transition: .15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--text-dim); }
+.btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.btn-primary:hover { background: #388bfd; }
+.btn-danger { background: #da3633; border-color: #da3633; color: #fff; }
+.btn-danger:hover { background: #f85149; }
+.btn-success { background: #238636; border-color: #238636; color: #fff; }
+.btn-success:hover { background: #2ea043; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+input, select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+  padding: 5px 8px; font-size: 13px; font-family: inherit; width: 100%;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+label { font-size: 13px; color: var(--text-dim); }
+.field { margin-bottom: 8px; }
+.field label { display: block; margin-bottom: 3px; }
+.field-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.network-list {
+  max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px;
+  font-family: 'Consolas', 'Courier New', monospace; font-size: 12px;
+}
+.network-item {
+  padding: 6px 8px; cursor: pointer; border-bottom: 1px solid var(--border); transition: .1s;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.network-item:last-child { border-bottom: none; }
+.network-item:hover { background: rgba(88,166,255,.08); }
+.network-item.selected { background: rgba(88,166,255,.15); border-left: 3px solid var(--accent); }
+.network-item .bssid { color: var(--accent); }
+.network-item .essid { color: var(--text); }
+.network-item .meta { color: var(--text-dim); font-size: 11px; }
+.network-item.vuln { border-left: 3px solid var(--orange); }
+.radio-group { display: flex; gap: 16px; flex-wrap: wrap; }
+.radio-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.checkbox-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px; }
+.log-box {
+  background: #000; border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.5;
+  height: 280px; overflow-y: auto; padding: 8px; white-space: pre-wrap; word-break: break-all;
+}
+.log-box .ts { color: var(--text-dim); }
+.log-box .info { color: var(--green); }
+.log-box .warn { color: var(--orange); }
+.log-box .err { color: var(--red); }
+.ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.pin-row { display: flex; gap: 8px; align-items: center; }
+.pin-row input { flex: 1; font-family: monospace; letter-spacing: 2px; }
+@media (max-width: 600px) {
+  .col { min-width: 100%; }
+  .header { flex-direction: column; align-items: stretch; }
+  .radio-group { gap: 8px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1><span>&#9762;</span> OneShot WebUI</h1>
+    <div class="iface-group">
+      <label for="iface">Interface</label>
+      <select id="iface"></select>
+      <button class="btn" onclick="refreshIfaces()">&#8635;</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Target Network</div>
+        <button class="btn btn-primary" id="scanBtn" onclick="startScan()">&#128269; Scan</button>
+        <div class="network-list" id="netList"><div style="padding:8px;color:var(--text-dim);font-size:13px">Click Scan to discover networks</div></div>
+        <div class="field" style="margin-top:8px">
+          <label>BSSID</label>
+          <input id="bssid" placeholder="e.g. 00:90:4C:C1:AC:21" spellcheck="false">
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">PIN</div>
+        <div class="pin-row">
+          <input id="pin" placeholder="Enter PIN or leave empty" spellcheck="false">
+          <button class="btn" onclick="generatePin()">Generate</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card">
+        <div class="card-title">Attack Mode</div>
+        <div class="radio-group">
+          <label><input type="radio" name="mode" value="pixie" checked> Pixie Dust</label>
+          <label><input type="radio" name="mode" value="bruteforce"> Bruteforce</label>
+          <label><input type="radio" name="mode" value="pbc"> PBC</label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Options</div>
+        <div class="checkbox-group">
+          <label><input type="checkbox" id="opt_write"> Write Creds</label>
+          <label><input type="checkbox" id="opt_force"> Pixie Force</label>
+          <label><input type="checkbox" id="opt_show_cmd"> Show Cmd</label>
+          <label><input type="checkbox" id="opt_loop"> Loop</label>
+          <label><input type="checkbox" id="opt_reverse"> Reverse</label>
+          <label><input type="checkbox" id="opt_verbose"> Verbose</label>
+          <label><input type="checkbox" id="opt_iface_down"> Iface Down</label>
+          <label><input type="checkbox" id="opt_mtk"> MTK WiFi</label>
+        </div>
+        <div class="field-row" style="margin-top:8px;gap:12px">
+          <div style="display:flex;align-items:center;gap:4px"><label>Delay</label><input id="delay" type="number" value="0" min="0" style="width:60px"> <span style="font-size:12px;color:var(--text-dim)">sec</span></div>
+          <div style="display:flex;align-items:center;gap:4px;flex:1"><label>Vuln List</label><input id="vuln_list" placeholder="vulnwsc.txt" style="flex:1"></div>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <button class="btn btn-success" id="startBtn" onclick="startAttack()">&#9654; Start Attack</button>
+        <button class="btn btn-danger" id="stopBtn" onclick="stopAttack()" disabled>&#9632; Stop</button>
+        <button class="btn" onclick="clearLog()">Clear Log</button>
+        <span id="statusBadge" style="font-size:12px;color:var(--text-dim)">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Output</div>
+    <div class="log-box" id="logBox"></div>
+  </div>
+</div>
+
+<script>
+let eventSource = null;
+let attackRunning = false;
+let selectedBssid = '';
+
+function log(msg, cls='info') {
+  const box = document.getElementById('logBox');
+  const t = new Date().toLocaleTimeString();
+  box.innerHTML += `<span class="ts">[${t}]</span> <span class="${cls}">${escapeHtml(msg)}</span>\n`;
+  box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function refreshIfaces() {
+  fetch('/api/interfaces').then(r=>r.json()).then(data => {
+    const sel = document.getElementById('iface');
+    sel.innerHTML = data.map(i => `<option value="${i}">${i}</option>`).join('');
+  });
+}
+
+function startScan() {
+  const iface = document.getElementById('iface').value;
+  document.getElementById('netList').innerHTML = '<div style="padding:8px;color:var(--orange);font-size:13px">Scanning...</div>';
+  document.getElementById('scanBtn').disabled = true;
+  fetch(`/api/scan?interface=${encodeURIComponent(iface)}`);
+}
+
+function loadNetworks() {
+  fetch('/api/networks').then(r=>r.json()).then(data => {
+    const list = document.getElementById('netList');
+    if (!data.length) {
+      list.innerHTML = '<div style="padding:8px;color:var(--text-dim);font-size:13px">No networks found</div>';
+      return;
+    }
+    list.innerHTML = data.map((n,i) => {
+      const cls = n.vuln ? 'network-item vuln' : 'network-item';
+      return `<div class="${cls}" onclick="selectNet(${i},'${n.bssid}')">
+        <div><span class="bssid">${n.bssid}</span> <span class="essid">${escapeHtml(n.essid)}</span></div>
+        <div class="meta">CH${n.channel} ${n.signal}dBm ${n.wps?'WPS':''}${n.vuln?' [VULN]':''}</div>
+      </div>`;
+    }).join('');
+  });
+}
+
+function selectNet(i, bssid) {
+  selectedBssid = bssid;
+  document.getElementById('bssid').value = bssid;
+  document.querySelectorAll('.network-item').forEach((el,idx) => el.classList.toggle('selected', idx===i));
+}
+
+function generatePin() {
+  const bssid = document.getElementById('bssid').value;
+  if (!bssid) { log('Enter BSSID first', 'warn'); return; }
+  fetch(`/api/generate_pin?bssid=${encodeURIComponent(bssid)}`).then(r=>r.json()).then(data => {
+    if (data.pin) { document.getElementById('pin').value = data.pin; log(`Generated PIN: ${data.pin}`); }
+    else if (data.error) log(`PIN error: ${data.error}`, 'err');
+  });
+}
+
+function getParams() {
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  return {
+    iface: document.getElementById('iface').value,
+    bssid: document.getElementById('bssid').value,
+    pin: document.getElementById('pin').value,
+    delay: parseInt(document.getElementById('delay').value) || 0,
+    write: document.getElementById('opt_write').checked,
+    pixie: mode === 'pixie',
+    bruteforce: mode === 'bruteforce',
+    pbc: mode === 'pbc',
+    force: document.getElementById('opt_force').checked,
+    show_cmd: document.getElementById('opt_show_cmd').checked,
+    loop: document.getElementById('opt_loop').checked,
+    reverse: document.getElementById('opt_reverse').checked,
+    verbose: document.getElementById('opt_verbose').checked,
+    iface_down: document.getElementById('opt_iface_down').checked,
+    mtk: document.getElementById('opt_mtk').checked,
+    vuln_list: document.getElementById('vuln_list').value,
+  };
+}
+
+function startAttack() {
+  if (attackRunning) return;
+  const params = getParams();
+  if (!params.iface) { log('Select interface', 'warn'); return; }
+  fetch('/api/attack', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(params)})
+  .then(r=>r.json()).then(d => {
+    if (d.error) { log(d.error, 'err'); return; }
+    attackRunning = true;
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').disabled = false;
+    document.getElementById('statusBadge').textContent = 'Attack running...';
+    log('[*] Attack started', 'info');
+  });
+}
+
+function stopAttack() {
+  fetch('/api/stop').then(() => {
+    attackRunning = false;
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('statusBadge').textContent = 'Stopped';
+    log('[!] Attack stopped by user', 'warn');
+  });
+}
+
+function clearLog() {
+  document.getElementById('logBox').innerHTML = '';
+}
+
+function connectSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/stream');
+  eventSource.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      log(escapeHtml(d.msg));
+    } catch(_) {}
+  };
+  eventSource.addEventListener('done', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.msg === '__SCAN_DONE__') {
+      document.getElementById('scanBtn').disabled = false;
+      document.getElementById('statusBadge').textContent = 'Scan complete';
+      loadNetworks();
+      log('[+] Scan finished', 'info');
+    } else if (d.msg === '__ATTACK_DONE__') {
+      attackRunning = false;
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('statusBadge').textContent = 'Attack finished';
+    }
+  });
+  eventSource.onerror = () => setTimeout(connectSSE, 1000);
+}
+
+refreshIfaces();
+setInterval(refreshIfaces, 5000);
+connectSSE();
+</script>
+</body>
+</html>'''
+
+# ============================================================
+# Main
+# ============================================================
+if __name__ == '__main__':
+    if os.geteuid() != 0:
+        print("[-] Root privileges required. Run with sudo.")
+        sys.exit(1)
+
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+    ip = get_own_ip()
+    print(f"[*] OneShot WebUI started")
+    print(f"[*] Local:   http://127.0.0.1:{port}")
+    print(f"[*] Network: http://{ip}:{port}")
+    print(f"[*] Press Ctrl+C to stop")
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)

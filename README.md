@@ -2,15 +2,16 @@
 
 **OneShot** performs [Pixie Dust attack](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-Offline-WPS-Attack) without having to switch to monitor mode.
 
-This repository includes **three interfaces**:
+This repository includes **four interfaces**:
 
 | File | Platform | Type |
 |------|----------|------|
 | `oneshot.py` | Linux / Termux | CLI (original) |
 | `oneshot_gui.py` | Linux Desktop | tkinter GUI |
 | `oneshot_termux.py` | Termux (Android) | curses TUI |
+| `oneshot_web.py` | **Any** (Linux, Kali, Termux) | **WebUI** (browser) |
 
-All three support the same 16 CLI options mapped to interactive controls.
+All four support the same 16 CLI options mapped to interactive controls.
 
 ---
 
@@ -149,6 +150,87 @@ All 16 CLI options are mapped:
 16. **MTK WiFi** — toggle MediaTek driver support
 17. **Vuln List** — load custom vuln file
 18. **Start Attack** — run with current settings
+
+---
+
+# WebUI (`oneshot_web.py`) — Same UI Everywhere
+
+**Single interface that works identically on Linux, Kali, and Termux.**  
+Runs a local web server — open in any browser (Chrome, Firefox, Kiwi, etc.).
+
+## Install Dependencies
+
+### Linux / Kali
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip wpasupplicant pixiewps iw
+pip3 install flask
+```
+
+### Termux
+
+```bash
+pkg update
+pkg install -y root-repo
+pkg install -y tsu python wpa-supplicant pixiewps iw openssl
+pip install flask
+```
+
+## Download
+
+```bash
+git clone https://github.com/OP-AMINUL-FF/opx-oneshot.git
+cd opx-oneshot
+```
+
+## Run
+
+### Linux / Kali
+
+```bash
+sudo python3 oneshot_web.py
+```
+
+### Termux
+
+```bash
+sudo python oneshot_web.py
+```
+
+Or with `tsu`:
+
+```bash
+tsu -c "cd ~/opx-oneshot && python oneshot_web.py"
+```
+
+## Access
+
+Open your browser and go to:
+
+```
+http://127.0.0.1:5000
+```
+
+On Termux (Android), open Chrome/Firefox and navigate to `http://127.0.0.1:5000`.
+
+> **On the same device:** `http://127.0.0.1:5000`  
+> **From another device on the same network:** `http://<your-ip>:5000`
+
+## WebUI Features
+
+| Feature | How |
+|---------|-----|
+| Interface select | Dropdown at top, auto-refreshes |
+| Scan | Button + scrollable network list |
+| BSSID | Click a network or type manually |
+| PIN | Manual input + Generate button (3WiFi) |
+| Attack mode | Radio buttons: Pixie Dust / Bruteforce / PBC |
+| Options | Checkboxes: Write, Force, Show Cmd, Loop, Reverse, Verbose, Iface Down, MTK |
+| Delay | Number input (seconds) |
+| Vuln List | Text field for custom path |
+| Start / Stop | Buttons with status indicator |
+| Log output | Scrollable console, real-time via SSE |
 
 ---
 
