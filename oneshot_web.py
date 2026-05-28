@@ -58,6 +58,46 @@ def save_history(essid, bssid, pin, psk, mode):
     except Exception as e:
         print(f"[-] Failed to save history: {e}")
 
+# ============================================================
+# Missing CLI features: saved PIN, session restore, PIN list
+# ============================================================
+def _oneshot_dir():
+    return os.path.expanduser('~/.OneShot')
+
+def get_saved_pin(bssid):
+    """Check for previously computed Pixie Dust PIN (CLI single_connection lines 700-708)"""
+    bssid_clean = bssid.replace(':', '').upper()
+    fpath = os.path.join(_oneshot_dir(), 'pixiewps', f'{bssid_clean}.run')
+    try:
+        with open(fpath, 'r') as f:
+            pin = f.readline().strip()
+            if pin and len(pin) == 8:
+                return pin
+    except:
+        pass
+    return None
+
+def get_saved_session(bssid):
+    """Check for saved bruteforce session (CLI smart_bruteforce lines 801-809)"""
+    bssid_clean = bssid.replace(':', '').upper()
+    fpath = os.path.join(_oneshot_dir(), 'sessions', f'{bssid_clean}.run')
+    try:
+        with open(fpath, 'r') as f:
+            mask = f.readline().strip()
+            if mask:
+                return mask
+    except:
+        pass
+    return None
+
+def get_suggested_pins(bssid):
+    """Get all suggested WPS PINs for a BSSID (CLI __prompt_wpspin)"""
+    try:
+        pin_gen = WPSpin()
+        return pin_gen.getSuggestedList(bssid)
+    except:
+        return []
+
 app = Flask(__name__)
 
 # ============================================================
@@ -308,13 +348,28 @@ def do_attack_in_thread(params):
                         print(f"[*] Starting PBC connection...")
                         companion.single_connection(pbc_mode=True)
                     elif bruteforce:
-                        atk_pin = atk_pin if atk_pin else '0000'
-                        print(f"[*] Starting bruteforce from PIN {atk_pin}...")
+                        # CLI smart_bruteforce: restore session if no pin given
+                        if not atk_pin:
+                            saved_mask = get_saved_session(bssid)
+                            if saved_mask:
+                                print(f"[*] Restored previous bruteforce session, continuing from mask {saved_mask}...")
+                                atk_pin = saved_mask
+                            else:
+                                atk_pin = '0000'
+                                print(f"[*] No saved session, starting bruteforce from {atk_pin}...")
+                        else:
+                            print(f"[*] Starting bruteforce from PIN {atk_pin}...")
                         companion.smart_bruteforce(bssid, atk_pin, delay)
                     else:
                         if pixie and not atk_pin:
-                            atk_pin = WPSpin().getLikely(bssid) or '12345670'
-                            print(f"[*] Generated PIN: {atk_pin}")
+                            # CLI single_connection lines 700-708: check saved PIN first
+                            saved_pin = get_saved_pin(bssid)
+                            if saved_pin:
+                                atk_pin = saved_pin
+                                print(f"[*] Using previously calculated PIN: {atk_pin}")
+                            else:
+                                atk_pin = WPSpin().getLikely(bssid) or '12345670'
+                                print(f"[*] Generated PIN: {atk_pin}")
                         print(f"[*] Starting {'Pixie Dust' if pixie else 'PIN'} attack with PIN {atk_pin}...")
                         companion.single_connection(bssid, atk_pin, pixie, False,
                                                     show_cmd, pixie_force)
@@ -422,15 +477,39 @@ def api_generate_pin():
     bssid = bssid.replace('-', ':').upper()
     log_queue.put(f'[*] Generating PIN for BSSID: {bssid}')
     try:
+        # First check for saved PIN (CLI single_connection line 700-708)
+        saved = get_saved_pin(bssid)
+        if saved:
+            log_queue.put(f'[+] Using previously calculated PIN: {saved}')
+            return jsonify({'pin': saved, 'saved': True})
         pin = WPSpin().getLikely(bssid)
         if pin:
             log_queue.put(f'[+] Generated PIN: {pin}')
         else:
             log_queue.put(f'[-] No PIN could be generated for {bssid}')
-        return jsonify({'pin': pin if pin else 'No PIN generated'})
+        return jsonify({'pin': pin if pin else 'No PIN generated', 'saved': False})
     except Exception as e:
         log_queue.put(f'[-] PIN generation error: {e}')
         return jsonify({'error': str(e)}), 400
+
+@app.route('/api/pin_options')
+def api_pin_options():
+    bssid = request.args.get('bssid', '')
+    bssid = bssid.replace('-', ':').upper()
+    saved = get_saved_pin(bssid)
+    suggestions = get_suggested_pins(bssid)
+    # Deduplicate and keep order
+    seen = set()
+    unique = []
+    for p in suggestions:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return jsonify({
+        'saved_pin': saved,
+        'suggestions': unique[:10],  # max 10
+        'count': len(unique)
+    })
 
 @app.route('/api/attack', methods=['POST'])
 def api_attack():
@@ -678,13 +757,14 @@ label { font-size: 13px; color: var(--text-dim); }
           <input id="bssid" placeholder="e.g. 00:90:4C:C1:AC:21" spellcheck="false">
         </div>
       </div>
-      <div class="card">
-        <div class="card-title">PIN</div>
-        <div class="pin-row">
-          <input id="pin" placeholder="Enter PIN or leave empty" spellcheck="false">
-          <button class="btn" id="genPinBtn" onclick="generatePin()">Generate</button>
+        <div class="card">
+          <div class="card-title">PIN</div>
+          <div class="pin-row">
+            <input id="pin" placeholder="Enter PIN or leave empty" spellcheck="false">
+            <button class="btn" id="genPinBtn" onclick="generatePin()">Generate</button>
+            <button class="btn" onclick="showPinOptions()">Options</button>
+          </div>
         </div>
-      </div>
     </div>
 
     <div class="col">
@@ -849,13 +929,42 @@ function generatePin() {
     document.getElementById('genPinBtn').disabled = false;
     if (data.pin && data.pin !== 'No PIN generated') {
       document.getElementById('pin').value = data.pin;
-      log(`[+] PIN generated: ${data.pin}`);
+      if (data.saved) {
+        log(`[+] Using previously calculated PIN: ${data.pin}`);
+      } else {
+        log(`[+] Generated PIN: ${data.pin}`);
+      }
     } else {
       log(`[-] No PIN available for ${bssid}`, 'warn');
     }
   }).catch(() => {
     document.getElementById('genPinBtn').disabled = false;
     log('[-] PIN generation failed', 'err');
+  });
+}
+
+function showPinOptions() {
+  const bssid = document.getElementById('bssid').value;
+  if (!bssid) { log('[-] Enter BSSID first', 'warn'); return; }
+  log('[*] Fetching all PIN options...');
+  fetch(`/api/pin_options?bssid=${encodeURIComponent(bssid)}`).then(r=>r.json()).then(data => {
+    if (data.saved_pin) {
+      log(`[+] Saved PIN found: ${data.saved_pin}`, 'info');
+    }
+    if (data.suggestions && data.suggestions.length > 0) {
+      log(`[*] Suggested PINs (${data.count} total):`, 'info');
+      data.suggestions.forEach((p, i) => {
+        const marker = (p === data.saved_pin) ? ' [saved]' : '';
+        log(`    ${i+1}. ${p}${marker}`, 'info');
+      });
+      if (data.count > data.suggestions.length) {
+        log(`    ... and ${data.count - data.suggestions.length} more`, 'info');
+      }
+    } else {
+      log('[-] No PIN suggestions available', 'warn');
+    }
+  }).catch(() => {
+    log('[-] Failed to fetch PIN options', 'err');
   });
 }
 
