@@ -169,6 +169,16 @@ remove_all() {
     exit 0
 }
 
+# ---- UPDATE ----
+do_update() {
+    detect_install_dir || { echo "[-] Install dir not found"; exit 1; }
+    echo "[*] Updating OneShot in $INSTALL_DIR..."
+    cd "$INSTALL_DIR" || exit 1
+    git pull
+    echo "[+] Update complete"
+    exit 0
+}
+
 # ---- START ----
 start_webui() {
     detect_install_dir || { echo "[-] Install dir not found"; exit 1; }
@@ -206,12 +216,14 @@ start_webui() {
 
 # ============================================================
 case "${1:-}" in
+    -u|--update|update) do_update ;;
     -r|--remove|remove|uninstall) remove_all ;;
     -h|--help|help)
         echo "OneShot WebUI — WPS attack tool"
         echo "Usage: $CMD_NAME [OPTION]"
         echo "  (no option)   Start WebUI (http://127.0.0.1:5000)"
         echo "  <port>        Start on custom port"
+        echo "  -u, --update  Update to latest version"
         echo "  -r, --remove  Remove OneShot completely"
         echo "  -h, --help    Show this help"
         ;;
@@ -232,6 +244,7 @@ SCRIPT
 
     succ "Global command created: $cmd_path"
     succ "  Run 'opx-oneshot'        → start WebUI"
+    succ "  Run 'opx-oneshot -u'     → update to latest"
     succ "  Run 'opx-oneshot -r'     → remove completely"
     succ "  Run 'opx-oneshot 8080'   → start on port 8080"
 }
@@ -256,6 +269,7 @@ show_info() {
     echo "  ┌─────────────────────────────────────────┐"
     echo "  │  opx-oneshot        → Start WebUI       │"
     echo "  │  opx-oneshot 8080   → Start on port 8080│"
+    echo "  │  opx-oneshot -u     → Update to latest  │"
     echo "  │  opx-oneshot -r     → Remove all files  │"
     echo "  └─────────────────────────────────────────┘"
     echo ""

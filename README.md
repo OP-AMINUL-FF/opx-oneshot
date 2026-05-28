@@ -15,6 +15,7 @@ bash install.sh
 # Then from anywhere:
 opx-oneshot           # Start WebUI
 opx-oneshot 8080      # Start on custom port
+opx-oneshot -u        # Update to latest version
 opx-oneshot -r        # Remove completely
 ```
 
