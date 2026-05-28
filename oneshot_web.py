@@ -65,44 +65,79 @@ def get_wifi_interfaces():
     seen = set()
     skip_words = {'no', 'ieee', 'essid', 'mode', 'access', 'bit', 'link', 'tx', 'rx',
                   'extra', 'power', 'retry', 'rts', 'frag', 'encryption', 'ap', 'cell'}
-    # Method 1: /proc/net/dev (most reliable on Termux/Android)
+
+    def add_iface(name):
+        n = name.strip().rstrip(':')
+        if n and n not in seen:
+            ifaces.append(n)
+            seen.add(n)
+
+    # Method 1: /sys/class/net/ (most reliable — works on Linux & Android)
+    try:
+        for entry in os.listdir('/sys/class/net/'):
+            add_iface(entry)
+    except:
+        pass
+
+    # Method 2: /proc/net/dev
     try:
         with open('/proc/net/dev') as f:
             for line in f.readlines()[2:]:
-                iface = line.strip().split(':')[0].strip()
-                if iface not in seen:
-                    ifaces.append(iface)
-                    seen.add(iface)
+                add_iface(line.split(':')[0])
     except:
         pass
-    # Method 2: iw dev (refine with wireless-capable interfaces)
+
+    # Method 3: ip link show
+    try:
+        r = subprocess.run(['ip', 'link', 'show'], capture_output=True, text=True)
+        for line in r.stdout.split('\n'):
+            if ': <' in line or ': ' in line:
+                parts = line.strip().split(': ')
+                if len(parts) >= 2:
+                    add_iface(parts[1].split('@')[0])  # handle veth@ifXXX
+    except:
+        pass
+
+    # Method 4: iw dev
     try:
         r = subprocess.run(['iw', 'dev'], capture_output=True, text=True)
         for line in r.stdout.split('\n'):
             if 'Interface' in line:
-                iface = line.split()[-1]
-                if iface not in seen:
-                    ifaces.append(iface)
-                    seen.add(iface)
+                add_iface(line.split()[-1])
     except:
         pass
-    # Method 3: iwconfig (catch any remaining interfaces)
+
+    # Method 5: iwconfig
     try:
         r = subprocess.run(['iwconfig'], capture_output=True, text=True)
         for line in r.stdout.split('\n'):
             sline = line.strip()
             if sline and ' ' in line and not line.startswith((' ', '\t')):
-                iface = line.split()[0].strip()
-                # Skip non-interface lines
-                if iface.lower() not in skip_words and not iface.startswith('('):
-                    if iface not in seen:
-                        ifaces.append(iface)
-                        seen.add(iface)
+                candidate = line.split()[0].strip()
+                if candidate.lower() not in skip_words and not candidate.startswith('('):
+                    add_iface(candidate)
     except:
         pass
-    # Filter out non-wireless virtual interfaces (lo, tunnels) but keep everything
-    # that might be a Wi-Fi interface
-    return ifaces if ifaces else ['wlan0']
+
+    # Method 6: ip addr
+    try:
+        r = subprocess.run(['ip', 'addr'], capture_output=True, text=True)
+        for line in r.stdout.split('\n'):
+            if ': <' in line or ': ' in line:
+                parts = line.strip().split(': ')
+                if len(parts) >= 2 and parts[1]:
+                    add_iface(parts[1].split('@')[0])
+    except:
+        pass
+
+    # Deduplicate, filter obvious virtual interfaces, keep wlan/wlp/etc
+    wireless_keywords = ('wlan', 'wlp', 'p2p', 'eth', 'ra', 'wfx', 'wl')
+    wifi = [i for i in ifaces if i.startswith(wireless_keywords)]
+    others = [i for i in ifaces if not i.startswith(wireless_keywords)]
+    # Put likely wireless interfaces first
+    result = wifi + others
+
+    return result if result else ['wlan0']
 
 def get_own_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
