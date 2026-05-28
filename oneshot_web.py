@@ -512,7 +512,9 @@ function escapeHtml(s) {
 function refreshIfaces() {
   fetch('/api/interfaces').then(r=>r.json()).then(data => {
     const sel = document.getElementById('iface');
+    const current = sel.value;
     sel.innerHTML = data.map(i => `<option value="${i}">${i}</option>`).join('');
+    if (data.includes(current)) sel.value = current;
   });
 }
 
