@@ -183,9 +183,9 @@ do_update() {
 start_webui() {
     detect_install_dir || { echo "[-] Install dir not found"; exit 1; }
 
-    local py
+    local py py_full
     for p in python3 python; do
-        command -v "$p" &>/dev/null && { py="$p"; break; }
+        command -v "$p" &>/dev/null && { py="$p"; py_full="$(command -v "$p")"; break; }
     done
     [ -z "$py" ] && { echo "[-] Python not found"; exit 1; }
 
@@ -200,7 +200,7 @@ start_webui() {
     if [ "$(id -u)" -ne 0 ]; then
         if command -v tsu &>/dev/null; then
             echo "[*] Starting with tsu..."
-            exec tsu -c "cd '$INSTALL_DIR' && $py oneshot_web.py $port"
+            exec tsu -c "cd '$INSTALL_DIR' && $py_full oneshot_web.py $port"
         elif command -v sudo &>/dev/null; then
             echo "[*] Starting with sudo..."
             exec sudo "$py" "$INSTALL_DIR/oneshot_web.py" "$port"
